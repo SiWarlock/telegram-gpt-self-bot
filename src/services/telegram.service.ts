@@ -44,19 +44,26 @@ export class TelegramService {
     }
 
     async start() {
-        await this.client.connect();
-        
-        if (!await this.client.isUserAuthorized()) {
-            await this.client.start({
-                phoneNumber: async () => { throw new Error('Session is invalid or expired'); },
-                password: async () => { throw new Error('Session is invalid or expired'); },
-                phoneCode: async () => { throw new Error('Session is invalid or expired'); },
-                onError: (err) => console.log(err),
-            });
+        try {
+            console.log('Attempting to connect to Telegram...');
+            await this.client.connect();
+            
+            console.log('Connected, checking authorization...');
+            const authorized = await this.client.isUserAuthorized();
+            console.log('Authorization status:', authorized);
+
+            if (!authorized) {
+                console.error('Session is not authorized. Please generate a new session string locally first.');
+                throw new Error('Session is invalid or expired');
+            }
+            
+            console.log('Telegram client started successfully');
+            this.client.addEventHandler(this.handleMessage.bind(this), new NewMessage({}));
+            console.log('Event handler added');
+        } catch (error) {
+            console.error('Failed to start Telegram client:', error);
+            throw error;
         }
-        
-        console.log('Telegram client started');
-        this.client.addEventHandler(this.handleMessage.bind(this), new NewMessage({}));
     }
 
     // ... rest of the base service code
