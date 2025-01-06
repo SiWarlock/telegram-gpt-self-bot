@@ -1,11 +1,11 @@
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
 import { NewMessage } from 'telegram/events';
-import { config } from '../config/config';
-import { OpenAIService } from './openai.service';
-import { GPTFeature } from './features/gpt.service';
-import { SelfDestructFeature } from './features/self-destruct.service';
-import { TLDRFeature } from './features/tldr.service';
+import { config } from '../../config/config';
+import { OpenAIService } from '../openai.service';
+import { GPTFeature } from './features/telegram-gpt.service';
+import { SelfDestructFeature } from './features/telegram-self-destruct.service';
+import { TLDRFeature } from './features/telegram-tldr.service';
 
 export class TelegramService {
     private client: TelegramClient;

@@ -1,10 +1,12 @@
 import express from 'express';
-import { TelegramService } from './services/telegram.service';
+import { TelegramService } from './services/telegram/telegram.service';
+import { DiscordService } from './services/discord/discord.service';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 const telegramService = new TelegramService();
+const discordService = new DiscordService();
 
 app.get('/', (req, res) => {
     res.send('Bot is running!');
@@ -16,10 +18,13 @@ app.get('/health', (req, res) => {
 
 async function start() {
     try {
-        await telegramService.start();
-        console.log('Bot is running...');
+        await Promise.all([
+            telegramService.start(),
+            discordService.start()
+        ]);
+        console.log('All services started successfully');
     } catch (error) {
-        console.error('Failed to start bot:', error);
+        console.error('Failed to start services:', error);
         process.exit(1);
     }
 }

@@ -1,6 +1,6 @@
-import { OpenAIService } from '../openai.service';
+import { OpenAIService } from '../../../services/openai.service';
 import type { Api } from 'telegram';
-import { config } from '../../config/config';
+import { config } from '../../../config/config';
 
 interface Conversation {
     messages: Array<{ role: string; content: string }>;

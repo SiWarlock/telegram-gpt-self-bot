@@ -1,5 +1,5 @@
 import type { Api } from 'telegram';
-import { config } from '../../config/config';
+import { config } from '../../../config/config';
 
 export class SelfDestructFeature {
     constructor(private client: any) {}

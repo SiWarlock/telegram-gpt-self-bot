@@ -1,6 +1,6 @@
 import type { Api } from 'telegram';
-import { OpenAIService } from '../openai.service';
-import { config } from '../../config/config';
+import { OpenAIService } from '../../../services/openai.service';
+import { config } from '../../../config/config';
 
 export class TLDRFeature {
     constructor(
