@@ -145,3 +145,55 @@ The bot can be deployed on platforms like Railway:
 ## License
 
 MIT License - See LICENSE file for details 
+
+## 🗺️ Roadmap
+
+### 🔐 Access Control & Privacy
+- [ ] Role-Based Access Control (RBAC) mechanism
+- [ ] Private management bot integration for both Telegram & Discord
+- [ ] Silent mode (`-s` flag) to redirect outputs to private bot chat
+
+### 🤖 Enhanced Chat Features
+- [ ] Reminder System (`!remindme`)
+  - Custom time/date scheduling
+  - Recurring reminders
+  - Priority levels
+  - Categories/tags
+
+- [ ] Memory Management (`!remember`)
+  - List management with add/remove operations
+  - Categorization and tagging
+  - Search functionality
+  - Export/import capabilities
+
+### 📊 Advanced Summarization
+- [ ] Enhanced TLDR functionality
+  - Multiple verbosity levels
+  - Topic-based filtering
+  - Custom focus areas
+  - Thread/conversation isolation
+
+### 📈 Smart Reporting
+- [ ] Engagement Analysis
+  - Contact interaction summaries
+  - Conversation topic tracking
+  - Action item extraction
+  - Follow-up recommendations
+
+- [ ] Message Management
+  - Missed message categorization
+  - Importance-based prioritization
+  - Smart response reminders
+  - Context preservation
+
+- [ ] Task Aggregation
+  - Consolidated view of reminders
+  - List status reports
+  - Priority-based task organization
+  - Deadline tracking
+
+### 🔄 Integration & Automation
+- [ ] Cross-platform synchronization
+- [ ] Automated report generation
+- [ ] Custom workflow creation
+- [ ] Data export and backup
