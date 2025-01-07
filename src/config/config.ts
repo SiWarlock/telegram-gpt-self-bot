@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { COMMANDS, BOT_CONFIG } from './constants';
 dotenv.config();
 
 function parseEnvValue(value: string | undefined): string {
@@ -29,11 +30,11 @@ export const config = {
         apiKey: parseEnvValue(process.env.OPENAI_API_KEY),
     },
     bot: {
-        triggerPrefix: parseEnvValue(process.env.TRIGGER_PREFIX) || '!gpt',
-        selfDestructPrefix: parseEnvValue(process.env.SELF_DESTRUCT_PREFIX) || '!sd',
-        tldrPrefix: parseEnvValue(process.env.TLDR_PREFIX) || '!tldr',
-        enableMarkdown: parseEnvBoolean(process.env.ENABLE_MARKDOWN),
-        showTimestamps: parseEnvBoolean(process.env.SHOW_TIMESTAMPS),
-        maxConversationLength: 10,
+        triggerPrefix: COMMANDS.GPT,
+        selfDestructPrefix: COMMANDS.SELF_DESTRUCT,
+        tldrPrefix: COMMANDS.TLDR,
+        enableMarkdown: BOT_CONFIG.ENABLE_MARKDOWN,
+        showTimestamps: BOT_CONFIG.SHOW_TIMESTAMPS,
+        maxConversationLength: BOT_CONFIG.MAX_CONVERSATION_LENGTH,
     },
 }; 

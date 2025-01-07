@@ -10,36 +10,27 @@ A powerful self-bot with GPT integration, self-destructing messages, and chat su
 - Or use both simultaneously
 - Bot automatically detects available credentials and starts appropriate services
 
-### 1. GPT Integration
-Use GPT-4 directly in your chats with the !gpt command.
+### Available Commands
+All commands are consistent across both Telegram and Discord:
 
-Example:
-- !gpt What is TypeScript?
-- !gpt clear (Clear conversation history)
-- !gpt help (Show help menu)
+1. **GPT Integration** (`!gpt`)
+   - `!gpt [question]` - Ask GPT a question
+   - `!gpt clear` - Clear conversation history
+   - `!gpt help` - Show help menu
 
-Features:
-- Maintains conversation context
-- Supports code formatting
-- Command history
-- Markdown support
+2. **Self-Destructing Messages** (`!sd`)
+   - `!sd [seconds] [message]` - Send a message that deletes itself
+   - Example: `!sd 10 This will delete in 10 seconds`
+   - Time limit: 1-60 seconds
 
-### 2. Self-Destructing Messages
-Send messages that delete themselves after a specified time using the !sd command.
-
-Example:
-- !sd 10 This message will delete in 10 seconds
-- !sd 60 One minute until this disappears
-- Maximum time: 60 seconds
-
-### 3. Chat Summarization (TLDR)
-Summarize chat history with GPT-4 using the !tldr command.
-
-Example:
-- !tldr 50 (Summarize last 50 messages)
-- !tldr 1h (Summarize last hour)
-- !tldr 30m (Summarize last 30 minutes)
-- !tldr 1d (Summarize last day)
+3. **Chat Summarization** (`!tldr`)
+   - `!tldr [count]` - Summarize last N messages
+   - `!tldr [time]` - Summarize messages from time period
+   - Examples:
+     - `!tldr 50` - Last 50 messages
+     - `!tldr 1h` - Last hour
+     - `!tldr 30m` - Last 30 minutes
+     - `!tldr 1d` - Last day
 
 ## Setup
 
@@ -62,7 +53,7 @@ Example:
 
 ## Environment Variables
 
-Create a .env file with your desired services:
+Create a `.env` file with your credentials:
 
 ### Required for All
 ```env
@@ -79,15 +70,6 @@ SESSION_STRING=your_telegram_session_string
 ### Required for Discord (Optional)
 ```env
 DISCORD_TOKEN=your_discord_token
-```
-
-### General Configuration
-```env
-TRIGGER_PREFIX=!gpt
-SELF_DESTRUCT_PREFIX=!sd
-ENABLE_MARKDOWN=true
-SHOW_TIMESTAMPS=true
-MAX_RETRIES=3
 ```
 
 ## Service Selection
@@ -118,8 +100,9 @@ The bot will automatically:
 1. Get your Discord token:
    - Open Discord in browser
    - Press F12 for Developer Tools
-   - In the network tab, find a request to the Discord API https://discord.com/api/ and look for the Authorization header in the request headers
-   - Copy the token from the Authorization header to .env file
+   - In the network tab, find a request to the Discord API https://discord.com/api/
+   - Look for the Authorization header in the request headers
+   - Copy the token to .env file
 
 ## Security Notes
 
