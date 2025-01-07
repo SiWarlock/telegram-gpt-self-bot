@@ -1,8 +1,14 @@
 # Telegram & Discord Self-Bot
 
-A powerful self-bot with GPT integration, self-destructing messages, and chat summarization features for both Telegram and Discord.
+A powerful self-bot with GPT integration, self-destructing messages, and chat summarization features. Can be used with Telegram, Discord, or both simultaneously.
 
 ## Features
+
+### Flexible Setup
+- Use with Telegram only
+- Use with Discord only
+- Or use both simultaneously
+- Bot automatically detects available credentials and starts appropriate services
 
 ### 1. GPT Integration
 Use GPT-4 directly in your chats with the !gpt command.
@@ -40,37 +46,57 @@ Example:
 1. Prerequisites
    - Node.js 16+
    - npm/yarn
-   - Telegram API credentials
-   - Discord user token
    - OpenAI API key
+   - Telegram API credentials (optional)
+   - Discord user token (optional)
 
 2. Installation
-   - Clone the repository
-   - Run npm install
-   - Configure .env file
-   - Start with npm run start
+   ```bash
+   git clone [repository-url]
+   cd [repository-name]
+   npm install
+   cp .env.example .env
+   # Edit .env with your credentials
+   npm run start
+   ```
 
 ## Environment Variables
 
-Create a .env file with:
+Create a .env file with your desired services:
 
-### Telegram Configuration
-- API_ID: Your Telegram API ID
-- API_HASH: Your Telegram API hash
-- SESSION_STRING: Your Telegram session string
+### Required for All
+```env
+OPENAI_API_KEY=your_openai_api_key
+```
 
-### Discord Configuration
-- DISCORD_TOKEN: Your Discord user token
+### Required for Telegram (Optional)
+```env
+API_ID=your_telegram_api_id
+API_HASH=your_telegram_api_hash
+SESSION_STRING=your_telegram_session_string
+```
 
-### OpenAI Configuration
-- OPENAI_API_KEY: Your OpenAI API key
+### Required for Discord (Optional)
+```env
+DISCORD_TOKEN=your_discord_token
+```
 
-### Bot Configuration
-- TRIGGER_PREFIX: Command prefix (default: !gpt)
-- SELF_DESTRUCT_PREFIX: Self-destruct prefix (default: !sd)
-- ENABLE_MARKDOWN: Enable markdown support (true/false)
-- SHOW_TIMESTAMPS: Show timestamps in messages (true/false)
-- MAX_RETRIES: Maximum retry attempts (default: 3)
+### General Configuration
+```env
+TRIGGER_PREFIX=!gpt
+SELF_DESTRUCT_PREFIX=!sd
+ENABLE_MARKDOWN=true
+SHOW_TIMESTAMPS=true
+MAX_RETRIES=3
+```
+
+## Service Selection
+
+The bot will automatically:
+1. Start Telegram service if Telegram credentials are provided
+2. Start Discord service if Discord token is provided
+3. Start both services if all credentials are available
+4. Exit with an error if no valid credentials are found
 
 ## Getting Credentials
 
@@ -92,11 +118,8 @@ Create a .env file with:
 1. Get your Discord token:
    - Open Discord in browser
    - Press F12 for Developer Tools
-   - In Console tab, paste:
-     ```javascript
-     window.webpackChunkdiscord_app.push([[Math.random()], {}, (req) => {for (const m of Object.keys(req.c).map((x) => req.c[x].exports).filter((x) => x)) {if (m.default && m.default.getToken !== undefined) {console.log(m.default.getToken())}}}]);
-     ```
-   - Copy the token to .env file
+   - In the network tab, find a request to the Discord API https://discord.com/api/ and look for the Authorization header in the request headers
+   - Copy the token from the Authorization header to .env file
 
 ## Security Notes
 
