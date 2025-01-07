@@ -6,7 +6,8 @@
   "scripts": {
     "start": "ts-node src/index.ts",
     "build": "tsc",
-    "dev": "nodemon src/index.ts"
+    "dev": "nodemon src/index.ts",
+    "get-session": "ts-node src/get-session.ts"
   },
   "dependencies": {
     "dotenv": "^16.0.3",

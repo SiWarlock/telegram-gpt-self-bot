@@ -91,10 +91,23 @@ The bot will automatically:
    - Copy API_ID and API_HASH
 
 2. Get SESSION_STRING:
-   - First run will prompt for phone number
-   - Enter verification code
-   - Session string will be generated
-   - Copy it to .env file
+   - Add your API_ID and API_HASH to .env file
+   - Run the session generator:
+     ```bash
+     npm run get-session
+     ```
+   - Enter your phone number when prompted
+   - Enter the verification code you receive
+   - Enter your 2FA password if enabled
+   - Copy the generated session string to your .env file
+   - Note: You only need to do this once, the session string remains valid until you log out
+
+3. Final .env setup for Telegram:
+   ```env
+   API_ID=your_api_id
+   API_HASH=your_api_hash
+   SESSION_STRING=your_generated_session_string
+   ```
 
 ### Discord Token
 1. Get your Discord token:
@@ -102,7 +115,7 @@ The bot will automatically:
    - Press F12 for Developer Tools
    - In the network tab, find a request to the Discord API https://discord.com/api/
    - Look for the Authorization header in the request headers
-   - Copy the token to .env file
+   - Copy the token from the Authorization header to .env file
 
 ## Security Notes
 
