@@ -3,6 +3,7 @@ import { config } from '../../config/config';
 import { DiscordGPTFeature } from './features/discord-gpt.service';
 import { DiscordSelfDestructFeature } from './features/discord-self-destruct.service';
 import { DiscordTLDRFeature } from './features/discord-tldr.service';
+import { DiscordGameFeature } from './features/discord-game.service';
 import { OpenAIService } from '../openai.service';
 
 export class DiscordService {
@@ -10,6 +11,7 @@ export class DiscordService {
     private gptFeature: DiscordGPTFeature;
     private selfDestructFeature: DiscordSelfDestructFeature;
     private tldrFeature: DiscordTLDRFeature;
+    private gameFeature: DiscordGameFeature;
     private conversations: Map<string, any> = new Map();
 
     constructor() {
@@ -21,6 +23,7 @@ export class DiscordService {
         this.gptFeature = new DiscordGPTFeature(this.client, openAIService, this.conversations);
         this.selfDestructFeature = new DiscordSelfDestructFeature(this.client);
         this.tldrFeature = new DiscordTLDRFeature(this.client, openAIService);
+        this.gameFeature = new DiscordGameFeature(this.client);
     }
 
     async start() {
@@ -33,10 +36,17 @@ export class DiscordService {
             });
 
             this.client.on('messageCreate', async (message) => {
-                if (message.author.id !== this.client.user?.id) return;
-
                 const messageText = message.content;
                 if (!messageText) return;
+
+                // For game commands, allow both bot and other users
+                if (messageText.startsWith(config.bot.gamePrefix)) {
+                    await this.gameFeature.handle(message);
+                    return;
+                }
+
+                // For other commands, only respond to bot's own messages
+                if (message.author.id !== this.client.user?.id) return;
 
                 if (messageText.startsWith(config.bot.triggerPrefix)) {
                     await this.gptFeature.handle(message);

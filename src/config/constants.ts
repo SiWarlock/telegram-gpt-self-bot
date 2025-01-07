@@ -1,7 +1,8 @@
 export const COMMANDS = {
     GPT: '!gpt',
     SELF_DESTRUCT: '!sd',
-    TLDR: '!tldr'
+    TLDR: '!tldr',
+    GAME: '!game'
 } as const;
 
 export const BOT_CONFIG = {

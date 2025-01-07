@@ -32,6 +32,24 @@ All commands are consistent across both Telegram and Discord:
      - `!tldr 30m` - Last 30 minutes
      - `!tldr 1d` - Last day
 
+4. **Games** (`!game`)
+   - Tic Tac Toe:
+     - `!game ttt @player` - Start a game
+     - `!game play 1-9` - Make a move
+     - Board positions: 1 (top-left) to 9 (bottom-right)
+
+   - Connect Four:
+     - `!game c4 @player` - Start a game
+     - `!game play 1-7` - Drop piece in column
+     - Get 4 in a row to win (horizontal, vertical, diagonal)
+
+   Features:
+     - Visual game boards with emojis
+     - Turn tracking
+     - Win/draw detection
+     - Game instructions on start
+     - 5-minute inactivity timeout
+
 ## Setup
 
 1. Prerequisites

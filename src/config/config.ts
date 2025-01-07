@@ -33,6 +33,7 @@ export const config = {
         triggerPrefix: COMMANDS.GPT,
         selfDestructPrefix: COMMANDS.SELF_DESTRUCT,
         tldrPrefix: COMMANDS.TLDR,
+        gamePrefix: COMMANDS.GAME,
         enableMarkdown: BOT_CONFIG.ENABLE_MARKDOWN,
         showTimestamps: BOT_CONFIG.SHOW_TIMESTAMPS,
         maxConversationLength: BOT_CONFIG.MAX_CONVERSATION_LENGTH,
