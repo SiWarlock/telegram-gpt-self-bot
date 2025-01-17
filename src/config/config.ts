@@ -1,43 +1,34 @@
 import dotenv from 'dotenv';
-import { COMMANDS, BOT_CONFIG } from './constants';
+
 dotenv.config();
 
 function parseEnvValue(value: string | undefined): string {
-    if (!value) return '';
-    return value.replace(/^["'](.+)["']$/, '$1');
-}
-
-function parseEnvBoolean(value: string | undefined): boolean {
-    const parsed = parseEnvValue(value);
-    return parsed.toLowerCase() === 'true';
-}
-
-function parseEnvNumber(value: string | undefined): number {
-    const parsed = parseInt(parseEnvValue(value) || '0');
-    return isNaN(parsed) ? 0 : parsed;
+    if (!value) {
+        throw new Error('Missing required environment variable');
+    }
+    return value;
 }
 
 export const config = {
     telegram: {
-        apiId: parseEnvNumber(process.env.API_ID),
+        apiId: parseInt(parseEnvValue(process.env.API_ID)),
         apiHash: parseEnvValue(process.env.API_HASH),
         sessionString: parseEnvValue(process.env.SESSION_STRING),
-        botToken: parseEnvValue(process.env.TELEGRAM_BOT_TOKEN),
-        ownerId: parseEnvValue(process.env.TELEGRAM_OWNER_ID),
+        botToken: process.env.TELEGRAM_BOT_TOKEN,
+        ownerId: process.env.TELEGRAM_OWNER_ID
     },
     discord: {
-        token: parseEnvValue(process.env.DISCORD_TOKEN),
+        token: process.env.DISCORD_TOKEN
     },
     openai: {
-        apiKey: parseEnvValue(process.env.OPENAI_API_KEY),
+        apiKey: parseEnvValue(process.env.OPENAI_API_KEY)
     },
     bot: {
-        triggerPrefix: COMMANDS.GPT,
-        selfDestructPrefix: COMMANDS.SELF_DESTRUCT,
-        tldrPrefix: COMMANDS.TLDR,
-        gamePrefix: COMMANDS.GAME,
-        enableMarkdown: BOT_CONFIG.ENABLE_MARKDOWN,
-        showTimestamps: BOT_CONFIG.SHOW_TIMESTAMPS,
-        maxConversationLength: BOT_CONFIG.MAX_CONVERSATION_LENGTH,
-    },
+        triggerPrefix: '!gpt',
+        selfDestructPrefix: '!sd',
+        tldrPrefix: '!tldr',
+        gamePrefix: '!game',
+        enableMarkdown: true,
+        maxConversationLength: 10
+    }
 }; 

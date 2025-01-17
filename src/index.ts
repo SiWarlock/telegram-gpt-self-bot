@@ -1,6 +1,7 @@
 import express from 'express';
 import { TelegramService } from './services/telegram/telegram.service';
 import { DiscordService } from './services/discord/discord.service';
+import { TelegramBotService } from './services/telegram/telegram-bot.service';
 import { config } from './config/config';
 
 const app = express();
@@ -18,6 +19,16 @@ async function startServices() {
         servicesStarted++;
     } else {
         console.log('Skipping Telegram service - missing credentials');
+    }
+
+    // Check Telegram Bot Token
+    if (config.telegram.botToken) {
+        console.log('Starting Telegram bot service...');
+        const telegramBotService = new TelegramBotService();
+        services.push(telegramBotService.start());
+        servicesStarted++;
+    } else {
+        console.log('Skipping Telegram bot service - missing bot token');
     }
 
     // Check Discord token
