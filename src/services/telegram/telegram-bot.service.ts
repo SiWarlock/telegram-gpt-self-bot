@@ -1,13 +1,14 @@
 import { Telegraf, Context } from 'telegraf';
 import { Update, Message } from 'telegraf/types';
 import { config } from '../../config/config';
+import { PermissionsService } from '../permissions/permissions.service';
 
-// We don't need to explicitly define message since it's already in Context
 type BotContext = Context<Update>;
 
 export class TelegramBotService {
     private bot: Telegraf<BotContext>;
     private readonly OWNER_ID: string;
+    private permissionsService: PermissionsService;
 
     constructor() {
         if (!config.telegram.botToken) {
@@ -16,6 +17,7 @@ export class TelegramBotService {
 
         this.bot = new Telegraf<BotContext>(config.telegram.botToken);
         this.OWNER_ID = config.telegram.ownerId || '';
+        this.permissionsService = new PermissionsService();
 
         this.setupCommands();
     }
@@ -38,61 +40,185 @@ export class TelegramBotService {
             }
         });
 
-        // Dashboard command - shows main control panel
-        this.bot.command('dashboard', this.ownerOnly(async (ctx) => {
-            await ctx.reply(
-                '🎛 **Dashboard**\n\n' +
-                '👥 Users: 0 managed\n' +
-                '🎭 Roles: Default configuration\n' +
-                '⚙️ Settings: All systems operational\n\n' +
-                'Use the commands below to manage:\n' +
-                '/users - User Management\n' +
-                '/roles - Role Configuration\n' +
-                '/settings - Bot Settings',
-                { parse_mode: 'Markdown' }
-            );
+        // Handle permission commands
+        this.bot.command('grant', this.ownerOnly(async (ctx) => {
+            const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
+            const chatId = ctx.chat?.id;
+
+            if (!messageText || !chatId) {
+                await ctx.reply('❌ Invalid command context');
+                return;
+            }
+
+            const args = messageText.split(' ').slice(1);
+            if (args.length !== 2) {
+                await ctx.reply('❌ Usage: /grant @username permission');
+                return;
+            }
+
+            const [username, permission] = args;
+            const cleanUsername = username.replace('@', '');
+
+            try {
+                const users = await ctx.telegram.getChatAdministrators(chatId);
+                const targetUser = users.find(u => u.user.username === cleanUsername);
+                
+                if (!targetUser) {
+                    await ctx.reply('❌ User not found in this chat');
+                    return;
+                }
+
+                const granted = await this.permissionsService.grantPermission(targetUser.user.id.toString(), permission);
+                if (granted) {
+                    await ctx.reply(`✅ Granted "${permission}" permission to @${cleanUsername}`);
+                } else {
+                    await ctx.reply(`ℹ️ @${cleanUsername} already has "${permission}" permission`);
+                }
+            } catch (error) {
+                console.error('Error granting permission:', error);
+                await ctx.reply('❌ Failed to grant permission');
+            }
         }));
 
-        // Users command - shows user management interface
-        this.bot.command('users', this.ownerOnly(async (ctx) => {
-            await ctx.reply(
-                '👥 **User Management**\n\n' +
-                'No users configured yet.\n\n' +
-                'To manage users from any chat:\n' +
-                '`!grant @user permission` - Grant permission\n' +
-                '`!revoke @user permission` - Revoke permission\n' +
-                '`!role @user role` - Set user role\n' +
-                '`!perms @user` - Check user permissions',
-                { parse_mode: 'Markdown' }
-            );
+        this.bot.command('revoke', this.ownerOnly(async (ctx) => {
+            const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
+            const chatId = ctx.chat?.id;
+
+            if (!messageText || !chatId) {
+                await ctx.reply('❌ Invalid command context');
+                return;
+            }
+
+            const args = messageText.split(' ').slice(1);
+            if (args.length !== 2) {
+                await ctx.reply('❌ Usage: /revoke @username permission');
+                return;
+            }
+
+            const [username, permission] = args;
+            const cleanUsername = username.replace('@', '');
+
+            try {
+                const users = await ctx.telegram.getChatAdministrators(chatId);
+                const targetUser = users.find(u => u.user.username === cleanUsername);
+                
+                if (!targetUser) {
+                    await ctx.reply('❌ User not found in this chat');
+                    return;
+                }
+
+                const revoked = await this.permissionsService.revokePermission(targetUser.user.id.toString(), permission);
+                if (revoked) {
+                    await ctx.reply(`✅ Revoked "${permission}" permission from @${cleanUsername}`);
+                } else {
+                    await ctx.reply(`ℹ️ @${cleanUsername} doesn't have "${permission}" permission`);
+                }
+            } catch (error) {
+                console.error('Error revoking permission:', error);
+                await ctx.reply('❌ Failed to revoke permission');
+            }
         }));
 
-        // Roles command - shows role configuration interface
+        this.bot.command('role', this.ownerOnly(async (ctx) => {
+            const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
+            const chatId = ctx.chat?.id;
+
+            if (!messageText || !chatId) {
+                await ctx.reply('❌ Invalid command context');
+                return;
+            }
+
+            const args = messageText.split(' ').slice(1);
+            if (args.length !== 2) {
+                await ctx.reply('❌ Usage: /role @username rolename');
+                return;
+            }
+
+            const [username, role] = args;
+            const cleanUsername = username.replace('@', '');
+
+            try {
+                const users = await ctx.telegram.getChatAdministrators(chatId);
+                const targetUser = users.find(u => u.user.username === cleanUsername);
+                
+                if (!targetUser) {
+                    await ctx.reply('❌ User not found in this chat');
+                    return;
+                }
+
+                const assigned = await this.permissionsService.assignRole(targetUser.user.id.toString(), role);
+                if (assigned) {
+                    const permissions = await this.permissionsService.getRolePermissions(role);
+                    await ctx.reply(
+                        `✅ Assigned role "${role}" to @${cleanUsername}\n` +
+                        `📋 Permissions: ${permissions.join(', ')}`
+                    );
+                } else {
+                    await ctx.reply(`❌ Invalid role "${role}" or user already has this role`);
+                }
+            } catch (error) {
+                console.error('Error assigning role:', error);
+                await ctx.reply('❌ Failed to assign role');
+            }
+        }));
+
         this.bot.command('roles', this.ownerOnly(async (ctx) => {
-            await ctx.reply(
-                '🎭 **Role Configuration**\n\n' +
-                'Available Roles:\n' +
-                '• admin - Full access\n' +
-                '• moderator - Limited management\n' +
-                '• user - Basic access\n\n' +
-                'To manage roles from any chat:\n' +
-                '`!role @user role` - Assign role\n' +
-                '`!roles` - List available roles',
-                { parse_mode: 'Markdown' }
-            );
+            try {
+                const availableRoles = await this.permissionsService.getAvailableRoles();
+                let message = '🎭 **Available Roles**\n\n';
+                
+                for (const role of availableRoles) {
+                    const permissions = await this.permissionsService.getRolePermissions(role);
+                    message += `• ${role}:\n  ${permissions.join(', ')}\n\n`;
+                }
+
+                await ctx.reply(message, { parse_mode: 'Markdown' });
+            } catch (error) {
+                console.error('Error listing roles:', error);
+                await ctx.reply('❌ Failed to list roles');
+            }
         }));
 
-        // Settings command - shows bot settings interface
-        this.bot.command('settings', this.ownerOnly(async (ctx) => {
-            await ctx.reply(
-                '⚙️ **Bot Settings**\n\n' +
-                'Current Configuration:\n' +
-                '• Silent Mode: Disabled\n' +
-                '• Logging: Enabled\n' +
-                '• Auto-cleanup: Disabled\n\n' +
-                'Use inline buttons below to modify settings.',
-                { parse_mode: 'Markdown' }
-            );
+        this.bot.command('perms', this.ownerOnly(async (ctx) => {
+            const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
+            const chatId = ctx.chat?.id;
+
+            if (!messageText || !chatId) {
+                await ctx.reply('❌ Invalid command context');
+                return;
+            }
+
+            const args = messageText.split(' ').slice(1);
+            if (args.length !== 1) {
+                await ctx.reply('❌ Usage: /perms @username');
+                return;
+            }
+
+            const username = args[0];
+            const cleanUsername = username.replace('@', '');
+
+            try {
+                const users = await ctx.telegram.getChatAdministrators(chatId);
+                const targetUser = users.find(u => u.user.username === cleanUsername);
+                
+                if (!targetUser) {
+                    await ctx.reply('❌ User not found in this chat');
+                    return;
+                }
+
+                const userId = targetUser.user.id.toString();
+                const roles = await this.permissionsService.getUserRoles(userId);
+                const permissions = await this.permissionsService.getUserPermissions(userId);
+
+                let message = `👤 **Permissions for @${cleanUsername}**\n\n`;
+                message += `🎭 Roles: ${roles.join(', ') || 'None'}\n\n`;
+                message += `📋 Permissions: ${permissions.join(', ') || 'None'}`;
+
+                await ctx.reply(message, { parse_mode: 'Markdown' });
+            } catch (error) {
+                console.error('Error getting permissions:', error);
+                await ctx.reply('❌ Failed to get permissions');
+            }
         }));
 
         // Error handling
