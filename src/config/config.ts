@@ -29,6 +29,7 @@ export const config = {
         tldrPrefix: '!tldr',
         gamePrefix: '!game',
         enableMarkdown: true,
-        maxConversationLength: 10
+        maxConversationLength: 10,
+        showTimestamps: true
     }
 }; 
