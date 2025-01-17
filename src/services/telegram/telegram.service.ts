@@ -6,6 +6,8 @@ import { OpenAIService } from '../openai.service';
 import { GPTFeature } from './features/telegram-gpt.service';
 import { SelfDestructFeature } from './features/telegram-self-destruct.service';
 import { TLDRFeature } from './features/telegram-tldr.service';
+import { TelegramGameFeature } from './features/telegram-game.service';
+import { COMMANDS } from '../../config/constants';
 
 export class TelegramService {
     private client: TelegramClient;
@@ -13,6 +15,7 @@ export class TelegramService {
     private gptFeature: GPTFeature;
     private selfDestructFeature: SelfDestructFeature;
     private tldrFeature: TLDRFeature;
+    private gameFeature: TelegramGameFeature;
     private conversations: Map<string, any> = new Map();
 
     constructor() {
@@ -26,6 +29,7 @@ export class TelegramService {
         this.gptFeature = new GPTFeature(this.client, this.openAIService, this.conversations);
         this.selfDestructFeature = new SelfDestructFeature(this.client);
         this.tldrFeature = new TLDRFeature(this.client, this.openAIService);
+        this.gameFeature = new TelegramGameFeature(this.client);
     }
 
     private async handleMessage(event: any) {
@@ -40,6 +44,8 @@ export class TelegramService {
             await this.selfDestructFeature.handle(message);
         } else if (messageText.startsWith(config.bot.tldrPrefix)) {
             await this.tldrFeature.handle(message);
+        } else if (messageText.startsWith(COMMANDS.GAME)) {
+            await this.gameFeature.handle(event);
         }
     }
 
