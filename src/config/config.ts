@@ -22,6 +22,8 @@ export const config = {
         apiId: parseEnvNumber(process.env.API_ID),
         apiHash: parseEnvValue(process.env.API_HASH),
         sessionString: parseEnvValue(process.env.SESSION_STRING),
+        botToken: parseEnvValue(process.env.TELEGRAM_BOT_TOKEN),
+        ownerId: parseEnvValue(process.env.TELEGRAM_OWNER_ID),
     },
     discord: {
         token: parseEnvValue(process.env.DISCORD_TOKEN),
