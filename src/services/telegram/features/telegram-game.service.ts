@@ -62,6 +62,9 @@ export class TelegramGameFeature {
                     await this.handleConnectFourMove(message, args[1], chatId, chatIdStr);
                 }
                 break;
+            case 'end':
+                await this.handleEndGame(message, chatId, chatIdStr);
+                break;
         }
     }
 
@@ -133,6 +136,14 @@ export class TelegramGameFeature {
         const senderId = message.senderId?.toString();
         const game = this.tttGames.get(chatIdStr);
 
+        // Debug logging
+        console.log('Move attempt:', {
+            senderId,
+            currentPlayer: game?.currentPlayer,
+            position,
+            chatId: chatIdStr
+        });
+
         if (!game || !senderId) {
             await this.client.sendMessage(chatId, {
                 message: '❌ No active Tic Tac Toe game in this chat. Start one with !game ttt @player'
@@ -140,9 +151,21 @@ export class TelegramGameFeature {
             return;
         }
 
+        // Debug logging for player verification
+        console.log('Player verification:', {
+            senderId,
+            currentPlayer: game.currentPlayer,
+            player1: game.player1,
+            player2: game.player2,
+            isCurrentPlayer: game.currentPlayer === senderId,
+            isPlayer1: game.player1 === senderId,
+            isPlayer2: game.player2 === senderId
+        });
+
         if (game.currentPlayer !== senderId) {
+            const currentPlayerName = await this.getUsernameById(game.currentPlayer);
             await this.client.sendMessage(chatId, {
-                message: '❌ Not your turn!'
+                message: `❌ Not your turn! Waiting for @${currentPlayerName} to play.`
             });
             return;
         }
@@ -450,6 +473,38 @@ export class TelegramGameFeature {
             if (now - game.lastActive > this.GAME_TIMEOUT) {
                 this.c4Games.delete(chatId);
             }
+        }
+    }
+
+    private async handleEndGame(message: Api.Message, chatId: EntityLike, chatIdStr: string): Promise<void> {
+        const senderId = message.senderId?.toString();
+        if (!senderId) return;
+
+        const tttGame = this.tttGames.get(chatIdStr);
+        const c4Game = this.c4Games.get(chatIdStr);
+
+        if (!tttGame && !c4Game) {
+            await this.client.sendMessage(chatId, {
+                message: '❌ No active game to end in this chat.'
+            });
+            return;
+        }
+
+        const game = tttGame || c4Game;
+        if (game && (game.player1 === senderId || game.player2 === senderId)) {
+            if (tttGame) {
+                this.tttGames.delete(chatIdStr);
+            } else {
+                this.c4Games.delete(chatIdStr);
+            }
+            const playerName = await this.getUsernameById(senderId);
+            await this.client.sendMessage(chatId, {
+                message: `🛑 Game ended by @${playerName}`
+            });
+        } else {
+            await this.client.sendMessage(chatId, {
+                message: '❌ Only players in the current game can end it.'
+            });
         }
     }
 } 
