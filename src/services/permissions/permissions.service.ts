@@ -5,9 +5,9 @@ export class PermissionsService {
 
     // Default roles and their permissions
     private readonly DEFAULT_ROLES = {
-        admin: ['manage_users', 'manage_roles', 'use_gpt', 'use_tldr', 'use_games'],
-        moderator: ['use_gpt', 'use_tldr', 'use_games', 'manage_games'],
-        user: ['use_gpt', 'use_tldr', 'use_games']
+        admin: ['manage_users', 'manage_roles', 'use_gpt', 'use_tldr', 'use_games', 'use_bot'],
+        moderator: ['use_gpt', 'use_tldr', 'use_games', 'manage_games', 'use_bot'],
+        user: ['use_gpt', 'use_tldr', 'use_games', 'use_bot']
     };
 
     constructor() {

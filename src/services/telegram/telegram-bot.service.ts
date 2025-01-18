@@ -36,8 +36,46 @@ export class TelegramBotService {
                     '/settings - Bot settings'
                 );
             } else {
-                await ctx.reply('⚠️ This bot is private and can only be used by the owner.');
+                const roles = await this.permissionsService.getUserRoles(userId || '');
+                if (roles.length > 0) {
+                    const permissions = await this.permissionsService.getUserPermissions(userId || '');
+                    await ctx.reply(
+                        '👋 Welcome! Here are your current permissions:\n\n' +
+                        `🎭 Roles: ${roles.join(', ')}\n` +
+                        `📋 Permissions: ${permissions.join(', ')}`
+                    );
+                } else {
+                    await ctx.reply('⚠️ You don\'t have any roles or permissions yet. Please contact the bot owner.');
+                }
             }
+        });
+
+        // Middleware to check permissions for all commands except /start
+        this.bot.use(async (ctx, next) => {
+            if (!ctx.message || !('text' in ctx.message) || !ctx.message.text.startsWith('/')) {
+                return next();
+            }
+
+            const command = ctx.message.text.split(' ')[0].substring(1); // Remove the '/'
+            if (command === 'start') {
+                return next();
+            }
+
+            const userId = ctx.from?.id.toString();
+            
+            // Owner always has access
+            if (userId === this.OWNER_ID) {
+                return next();
+            }
+
+            // Check if user has any required permission
+            const hasPermission = await this.permissionsService.hasPermission(userId || '', 'use_bot');
+            if (!hasPermission) {
+                await ctx.reply('⛔ Access denied. You need appropriate permissions to use this command.');
+                return;
+            }
+
+            return next();
         });
 
         // Handle permission commands
