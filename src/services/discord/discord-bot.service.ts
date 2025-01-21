@@ -3,6 +3,11 @@ import { Client as SelfClient, Message as SelfMessage, MessageEmbed as SelfEmbed
 import { config } from '../../config/config';
 import { PermissionsService } from '../permissions/permissions.service';
 import { DiscordRBACHandler } from './handlers/discord-rbac.handler';
+import { OpenAIService } from '../openai.service';
+import { DiscordGPTFeature } from './features/discord-gpt.service';
+import { DiscordTLDRFeature } from './features/discord-tldr.service';
+import { DiscordSelfDestructFeature } from './features/discord-self-destruct.service';
+import { DiscordGameFeature } from './features/discord-game.service';
 
 type AnyClient = BotClient | SelfClient;
 type AnyMessage = BotMessage | SelfMessage;
@@ -20,6 +25,16 @@ export class DiscordBotService {
     private permissionsService: PermissionsService;
     private botRBACHandler?: DiscordRBACHandler;
     private selfRBACHandler?: DiscordRBACHandler;
+    private openAIService: OpenAIService;
+    private botGPTFeature?: DiscordGPTFeature;
+    private selfGPTFeature?: DiscordGPTFeature;
+    private botTLDRFeature?: DiscordTLDRFeature;
+    private selfTLDRFeature?: DiscordTLDRFeature;
+    private botSelfDestructFeature?: DiscordSelfDestructFeature;
+    private selfSelfDestructFeature?: DiscordSelfDestructFeature;
+    private botGameFeature?: DiscordGameFeature;
+    private selfGameFeature?: DiscordGameFeature;
+    private conversations: Map<string, any> = new Map();
 
     constructor() {
         const botToken = config.discord.botToken;
@@ -56,13 +71,22 @@ export class DiscordBotService {
         }
 
         this.permissionsService = new PermissionsService();
+        this.openAIService = new OpenAIService();
         
-        // Create separate RBAC handlers for each client
+        // Create separate handlers for each client
         if (this.botClient) {
             this.botRBACHandler = new DiscordRBACHandler(this.botClient, this.permissionsService);
+            this.botGPTFeature = new DiscordGPTFeature(this.botClient as any, this.openAIService, this.conversations);
+            this.botTLDRFeature = new DiscordTLDRFeature(this.botClient as any, this.openAIService);
+            this.botSelfDestructFeature = new DiscordSelfDestructFeature(this.botClient as any);
+            this.botGameFeature = new DiscordGameFeature(this.botClient as any);
         }
         if (this.selfClient) {
             this.selfRBACHandler = new DiscordRBACHandler(this.selfClient, this.permissionsService);
+            this.selfGPTFeature = new DiscordGPTFeature(this.selfClient as any, this.openAIService, this.conversations);
+            this.selfTLDRFeature = new DiscordTLDRFeature(this.selfClient as any, this.openAIService);
+            this.selfSelfDestructFeature = new DiscordSelfDestructFeature(this.selfClient as any);
+            this.selfGameFeature = new DiscordGameFeature(this.selfClient as any);
         }
         
         this.setupEventHandlers();
@@ -102,15 +126,19 @@ export class DiscordBotService {
         // For self-bot mode, don't filter any messages - we want to process commands in any chat
 
         const messageText = message.content;
-        // Only process messages that start with !
-        if (!messageText.startsWith('!')) return;
+        // Only process messages that start with ! or configured prefixes
+        if (!messageText.startsWith('!') && 
+            !messageText.startsWith(config.bot.triggerPrefix) && 
+            !messageText.startsWith(config.bot.selfDestructPrefix) && 
+            !messageText.startsWith(config.bot.tldrPrefix) && 
+            !messageText.startsWith(config.bot.gamePrefix)) return;
 
         const senderId = message.author.id;
         const command = messageText.split(' ')[0].substring(1);
 
         // Check if it's a valid command first
         const isManagementCommand = ['roles', 'grant', 'revoke', 'role', 'perms', 'dashboard', 'users', 'settings'].includes(command);
-        const isRegularCommand = ['gpt', 'tldr', 'help'].includes(command);
+        const isRegularCommand = ['gpt', 'tldr', 'help', 'sd', 'game'].includes(command);
 
         if (!isManagementCommand && !isRegularCommand) return;
 
@@ -131,20 +159,42 @@ export class DiscordBotService {
         switch (command) {
             case 'gpt':
                 if (isOwner || await rbacHandler.hasPermission(senderId, 'use_gpt')) {
-                    // Handle GPT command
-                    // TODO: Add your GPT command handling here
-                    await message.reply("GPT command received"); // Temporary response
+                    const gptFeature = mode === 'bot' ? this.botGPTFeature : this.selfGPTFeature;
+                    if (gptFeature) {
+                        await gptFeature.handle(message as any);
+                    }
                 } else {
-                    await message.reply('⛔ You don\'t have permission to use GPT commands. Please contact the bot owner.');
+                    await message.reply('⛔ You don\'t have permission to use GPT commands.');
                 }
                 return;
             case 'tldr':
                 if (isOwner || await rbacHandler.hasPermission(senderId, 'use_tldr')) {
-                    // Handle TLDR command
-                    // TODO: Add your TLDR command handling here
-                    await message.reply("TLDR command received"); // Temporary response
+                    const tldrFeature = mode === 'bot' ? this.botTLDRFeature : this.selfTLDRFeature;
+                    if (tldrFeature) {
+                        await tldrFeature.handle(message as any);
+                    }
                 } else {
-                    await message.reply('⛔ You don\'t have permission to use TLDR commands. Please contact the bot owner.');
+                    await message.reply('⛔ You don\'t have permission to use TLDR commands.');
+                }
+                return;
+            case 'sd':
+                if (isOwner || await rbacHandler.hasPermission(senderId, 'use_bot')) {
+                    const selfDestructFeature = mode === 'bot' ? this.botSelfDestructFeature : this.selfSelfDestructFeature;
+                    if (selfDestructFeature) {
+                        await selfDestructFeature.handle(message as any);
+                    }
+                } else {
+                    await message.reply('⛔ You don\'t have permission to use self-destruct messages.');
+                }
+                return;
+            case 'game':
+                if (isOwner || await rbacHandler.hasPermission(senderId, 'use_games')) {
+                    const gameFeature = mode === 'bot' ? this.botGameFeature : this.selfGameFeature;
+                    if (gameFeature) {
+                        await gameFeature.handle(message as any);
+                    }
+                } else {
+                    await message.reply('⛔ You don\'t have permission to use game commands.');
                 }
                 return;
             case 'help':

@@ -1,6 +1,10 @@
-import { Client, Message } from 'discord.js-selfbot-v13';
+import { Client as BotClient, Message as BotMessage } from 'discord.js';
+import { Client as SelfClient, Message as SelfMessage } from 'discord.js-selfbot-v13';
 import { OpenAIService } from '../../openai.service';
 import { config } from '../../../config/config';
+
+type AnyClient = BotClient | SelfClient;
+type AnyMessage = BotMessage | SelfMessage;
 
 interface Conversation {
     messages: Array<{ role: string; content: string }>;
@@ -12,14 +16,14 @@ export class DiscordGPTFeature {
     private readonly CONVERSATION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
     constructor(
-        private client: Client,
+        private client: AnyClient,
         private openAIService: OpenAIService,
         private conversations: Map<string, Conversation>
     ) {
         setInterval(() => this.cleanupOldConversations(), 5 * 60 * 1000);
     }
 
-    async handle(message: Message): Promise<void> {
+    async handle(message: AnyMessage): Promise<void> {
         const messageText = message.content;
         const channelId = message.channel.id;
 
@@ -61,7 +65,11 @@ export class DiscordGPTFeature {
 
             const formattedResponse = this.formatResponse(input, response, conversation.messages.length);
             
-            await thinkingMessage.edit(formattedResponse);
+            if ('edit' in thinkingMessage) {
+                await thinkingMessage.edit(formattedResponse);
+            } else {
+                await message.reply(formattedResponse);
+            }
 
         } catch (error) {
             console.error('Error handling GPT message:', error);
@@ -71,7 +79,7 @@ export class DiscordGPTFeature {
         }
     }
 
-    private async handleCommands(message: Message, command: string): Promise<boolean> {
+    private async handleCommands(message: AnyMessage, command: string): Promise<boolean> {
         const channelId = message.channel.id;
         
         switch (command.toLowerCase()) {
