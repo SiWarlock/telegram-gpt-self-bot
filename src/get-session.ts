@@ -5,8 +5,8 @@ import { config } from './config/config';
 async function getSession() {
     const client = new TelegramClient(
         new StringSession(''),
-        config.telegram.apiId,
-        config.telegram.apiHash,
+        config.telegram.apiId ?? 0,
+        config.telegram.apiHash ?? '',
         { connectionRetries: 5 }
     );
 
