@@ -16,7 +16,11 @@ export class DiscordService {
 
     constructor() {
         this.client = new Client({
-            checkUpdate: false,
+            ws: {
+                properties: {
+                    browser: "Discord iOS"
+                }
+            }
         });
 
         const openAIService = new OpenAIService();
@@ -24,16 +28,32 @@ export class DiscordService {
         this.selfDestructFeature = new DiscordSelfDestructFeature(this.client);
         this.tldrFeature = new DiscordTLDRFeature(this.client, openAIService);
         this.gameFeature = new DiscordGameFeature(this.client);
+
+        this.client.on('error', (error) => {
+            console.error('Discord client error:', error);
+        });
+
+        this.client.on('warn', (warning) => {
+            console.warn('Discord warning:', warning);
+        });
+
+        this.client.on('debug', info => {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('Discord debug:', info);
+            }
+        });
     }
 
     async start() {
+        if (!process.env.DISCORD_TOKEN) {
+            console.warn('Discord token not configured, skipping Discord service');
+            return;
+        }
+
         try {
             console.log('Attempting to connect to Discord...');
-            await this.client.login(config.discord.token);
-            
-            this.client.on('ready', () => {
-                console.log(`Discord client started as ${this.client.user?.tag}`);
-            });
+            await this.client.login(process.env.DISCORD_TOKEN);
+            console.log(`Discord client started successfully as ${this.client.user?.tag}`);
 
             this.client.on('messageCreate', async (message) => {
                 const messageText = message.content;
@@ -59,7 +79,12 @@ export class DiscordService {
 
         } catch (error) {
             console.error('Failed to start Discord client:', error);
-            throw error;
+            // Don't throw error to prevent it from affecting other services
+            return;
         }
+    }
+
+    getClient() {
+        return this.client;
     }
 } 

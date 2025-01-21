@@ -8,6 +8,7 @@ interface Conversation {
 }
 
 export class DiscordGPTFeature {
+    private processingMessages: Set<string> = new Set();
     private readonly CONVERSATION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
     constructor(
@@ -19,15 +20,26 @@ export class DiscordGPTFeature {
     }
 
     async handle(message: Message): Promise<void> {
+        const messageText = message.content;
         const channelId = message.channel.id;
-        const input = message.content.slice(config.bot.triggerPrefix.length).trim();
+
+        if (!channelId) return;
+
+        const messageId = `${channelId}_${message.id}`;
+        if (this.processingMessages.has(messageId)) {
+            return;
+        }
+        this.processingMessages.add(messageId);
+
+        const input = messageText.slice(config.bot.triggerPrefix.length).trim();
         
         if (await this.handleCommands(message, input)) {
+            this.processingMessages.delete(messageId);
             return;
         }
 
         try {
-            const thinkingMsg = await message.reply('🤔 Thinking...');
+            const thinkingMessage = await message.reply('🤔 Thinking...');
 
             if (!this.conversations.has(channelId)) {
                 this.conversations.set(channelId, {
@@ -49,29 +61,14 @@ export class DiscordGPTFeature {
 
             const formattedResponse = this.formatResponse(input, response, conversation.messages.length);
             
-            await thinkingMsg.edit(formattedResponse);
+            await thinkingMessage.edit(formattedResponse);
 
         } catch (error) {
             console.error('Error handling GPT message:', error);
             await message.reply('❌ Sorry, there was an error processing your request.');
+        } finally {
+            this.processingMessages.delete(messageId);
         }
-    }
-
-    private formatResponse(prompt: string, response: string, messageCount: number): string {
-        const timestamp = config.bot.showTimestamps ? new Date().toLocaleTimeString() : '';
-        
-        return `🤖 **GPT-4 Response** (#${messageCount})
-───────────────
-📝 **Query**: ${prompt}
-
-${response}
-
-───────────────
-${timestamp ? `⏰ ${timestamp} | ` : ''}💭 ${messageCount} messages in conversation
-🔄 Commands:
-• ${config.bot.triggerPrefix} [question] - Ask a question
-• ${config.bot.triggerPrefix} clear - Clear history
-• ${config.bot.triggerPrefix} help - Show help`;
     }
 
     private async handleCommands(message: Message, command: string): Promise<boolean> {
@@ -102,6 +99,23 @@ Features:
             default:
                 return false;
         }
+    }
+
+    private formatResponse(prompt: string, response: string, messageCount: number): string {
+        const timestamp = config.bot.showTimestamps ? new Date().toLocaleTimeString() : '';
+        
+        return `🤖 **GPT-4 Response** (#${messageCount})
+───────────────
+📝 **Query**: ${prompt}
+
+${response}
+
+───────────────
+${timestamp ? `⏰ ${timestamp} | ` : ''}💭 ${messageCount} messages in conversation
+🔄 Commands:
+• ${config.bot.triggerPrefix} [question] - Ask a question
+• ${config.bot.triggerPrefix} clear - Clear history
+• ${config.bot.triggerPrefix} help - Show help`;
     }
 
     private cleanupOldConversations() {

@@ -1,7 +1,8 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient as PrismaClientType } from '.prisma/client';
+const PrismaClient = require('@prisma/client').PrismaClient;
 
 export class PermissionsService {
-    private prisma: PrismaClient;
+    private prisma: PrismaClientType;
 
     // Default roles and their permissions
     private readonly DEFAULT_ROLES = {

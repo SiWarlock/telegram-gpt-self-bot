@@ -9,13 +9,16 @@ const port = process.env.PORT || 3000;
 
 async function startServices() {
     let servicesStarted = 0;
-    const services: Promise<void>[] = [];
+    const services: Array<{ name: string; promise: Promise<void> }> = [];
 
     // Check Telegram credentials
     if (config.telegram.apiId && config.telegram.apiHash && config.telegram.sessionString) {
         console.log('Starting Telegram service...');
         const telegramService = new TelegramService();
-        services.push(telegramService.start());
+        services.push({
+            name: 'Telegram',
+            promise: telegramService.start()
+        });
         servicesStarted++;
     } else {
         console.log('Skipping Telegram service - missing credentials');
@@ -25,7 +28,10 @@ async function startServices() {
     if (config.telegram.botToken) {
         console.log('Starting Telegram bot service...');
         const telegramBotService = new TelegramBotService();
-        services.push(telegramBotService.start());
+        services.push({
+            name: 'Telegram Bot',
+            promise: telegramBotService.start()
+        });
         servicesStarted++;
     } else {
         console.log('Skipping Telegram bot service - missing bot token');
@@ -35,7 +41,13 @@ async function startServices() {
     if (config.discord.token) {
         console.log('Starting Discord service...');
         const discordService = new DiscordService();
-        services.push(discordService.start());
+        services.push({
+            name: 'Discord',
+            promise: discordService.start().catch(error => {
+                console.error('Discord service failed to start:', error);
+                // Don't throw the error, just log it
+            })
+        });
         servicesStarted++;
     } else {
         console.log('Skipping Discord service - missing token');
@@ -46,12 +58,20 @@ async function startServices() {
         process.exit(1);
     }
 
-    try {
-        await Promise.all(services);
-        console.log(`Successfully started ${servicesStarted} service(s)`);
-    } catch (error) {
-        console.error('Error starting services:', error);
-        process.exit(1);
+    // Wait for all services to start, but handle failures individually
+    for (const service of services) {
+        try {
+            await service.promise;
+            console.log(`${service.name} service started successfully`);
+        } catch (error) {
+            console.error(`${service.name} service failed to start:`, error);
+            // Only exit if all services failed
+            servicesStarted--;
+            if (servicesStarted === 0) {
+                console.error('All services failed to start');
+                process.exit(1);
+            }
+        }
     }
 }
 
