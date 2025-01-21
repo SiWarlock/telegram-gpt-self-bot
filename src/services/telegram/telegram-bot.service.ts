@@ -16,7 +16,7 @@ export class TelegramBotService {
         }
 
         this.bot = new Telegraf<BotContext>(config.telegram.botToken);
-        this.OWNER_ID = config.telegram.ownerId || '';
+        this.OWNER_ID = config.telegram.ownerId?.toString() || '';
         this.permissionsService = new PermissionsService();
 
         this.setupCommands();

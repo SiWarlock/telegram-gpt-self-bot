@@ -11,17 +11,19 @@ function parseEnvValue(value: string | undefined): string {
 
 export const config = {
     telegram: {
-        apiId: parseInt(parseEnvValue(process.env.API_ID)),
-        apiHash: parseEnvValue(process.env.API_HASH),
-        sessionString: parseEnvValue(process.env.SESSION_STRING),
+        apiId: process.env.API_ID ? parseInt(process.env.API_ID) : undefined,
+        apiHash: process.env.API_HASH,
+        sessionString: process.env.SESSION_STRING,
         botToken: process.env.TELEGRAM_BOT_TOKEN,
-        ownerId: process.env.TELEGRAM_OWNER_ID
+        ownerId: process.env.TELEGRAM_OWNER_ID ? parseInt(process.env.TELEGRAM_OWNER_ID) : undefined
     },
     discord: {
-        token: process.env.DISCORD_TOKEN
+        token: process.env.DISCORD_TOKEN,
+        botToken: process.env.DISCORD_BOT_TOKEN,
+        ownerId: process.env.DISCORD_OWNER_ID
     },
     openai: {
-        apiKey: parseEnvValue(process.env.OPENAI_API_KEY)
+        apiKey: process.env.OPENAI_API_KEY
     },
     bot: {
         triggerPrefix: '!gpt',

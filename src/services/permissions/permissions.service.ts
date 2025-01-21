@@ -1,8 +1,7 @@
-import { PrismaClient as PrismaClientType } from '.prisma/client';
-const PrismaClient = require('@prisma/client').PrismaClient;
+import { PrismaClient } from '@prisma/client';
 
 export class PermissionsService {
-    private prisma: PrismaClientType;
+    private prisma: PrismaClient;
 
     // Default roles and their permissions
     private readonly DEFAULT_ROLES = {
@@ -245,14 +244,12 @@ export class PermissionsService {
     }
 
     // Get all users
-    async getAllUsers(): Promise<any[]> {
+    async getAllUsers() {
         try {
-            const users = await this.prisma.user.findMany({
-                include: { roles: true }
-            });
+            const users = await this.prisma.user.findMany();
             return users;
         } catch (error) {
-            console.error('Error getting all users:', error);
+            console.error('Error getting users:', error);
             return [];
         }
     }
@@ -269,11 +266,10 @@ export class PermissionsService {
     }
 
     // Get a specific user
-    async getUser(userId: string): Promise<any> {
+    async getUser(userId: string) {
         try {
             const user = await this.prisma.user.findUnique({
-                where: { id: userId },
-                include: { roles: true, permissions: true }
+                where: { id: userId }
             });
             return user;
         } catch (error) {
@@ -283,27 +279,26 @@ export class PermissionsService {
     }
 
     // Add a new user
-    async addUser(userData: { id: string; username?: string }): Promise<boolean> {
+    async addUser(userData: { id: string; username?: string }) {
         try {
-            await this.prisma.user.create({
-                data: {
-                    id: userData.id,
-                    username: userData.username
-                }
+            const user = await this.prisma.user.create({
+                data: userData
             });
-            return true;
+            await this.logAction('ADD_USER', `Added user ${userData.username || userData.id}`);
+            return user;
         } catch (error) {
             console.error('Error adding user:', error);
-            return false;
+            return null;
         }
     }
 
     // Remove a user
-    async removeUser(userId: string): Promise<boolean> {
+    async removeUser(userId: string) {
         try {
             await this.prisma.user.delete({
                 where: { id: userId }
             });
+            await this.logAction('REMOVE_USER', `Removed user ${userId}`);
             return true;
         } catch (error) {
             console.error('Error removing user:', error);
@@ -323,6 +318,33 @@ export class PermissionsService {
         } catch (error) {
             console.error('Error checking role:', error);
             return false;
+        }
+    }
+
+    async getRecentLogs(limit: number = 10) {
+        try {
+            const logs = await this.prisma.log.findMany({
+                take: limit,
+                orderBy: { timestamp: 'desc' }
+            });
+            return logs;
+        } catch (error) {
+            console.error('Error getting logs:', error);
+            return [];
+        }
+    }
+
+    private async logAction(action: string, details: string) {
+        try {
+            await this.prisma.log.create({
+                data: {
+                    action,
+                    details,
+                    timestamp: new Date()
+                }
+            });
+        } catch (error) {
+            console.error('Error logging action:', error);
         }
     }
 } 

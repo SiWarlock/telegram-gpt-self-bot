@@ -27,8 +27,8 @@ export class TelegramService {
     constructor() {
         this.client = new TelegramClient(
             new StringSession(config.telegram.sessionString),
-            config.telegram.apiId,
-            config.telegram.apiHash,
+            config.telegram.apiId || 0,
+            config.telegram.apiHash || '',
             { connectionRetries: 5 }
         );
         this.openAIService = new OpenAIService();
