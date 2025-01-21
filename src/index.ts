@@ -1,6 +1,6 @@
 import express from 'express';
 import { TelegramService } from './services/telegram/telegram.service';
-import { DiscordService } from './services/discord/discord.service';
+import { DiscordBotService } from './services/discord/discord-bot.service';
 import { TelegramBotService } from './services/telegram/telegram-bot.service';
 import { config } from './config/config';
 
@@ -37,20 +37,17 @@ async function startServices() {
         console.log('Skipping Telegram bot service - missing bot token');
     }
 
-    // Check Discord token
-    if (config.discord.token) {
-        console.log('Starting Discord service...');
-        const discordService = new DiscordService();
+    // Check Discord token or bot token
+    if (config.discord.token || config.discord.botToken) {
+        console.log('Starting Discord bot service...');
+        const discordService = new DiscordBotService();
         services.push({
-            name: 'Discord',
-            promise: discordService.start().catch(error => {
-                console.error('Discord service failed to start:', error);
-                // Don't throw the error, just log it
-            })
+            name: 'Discord Bot',
+            promise: discordService.start()
         });
         servicesStarted++;
     } else {
-        console.log('Skipping Discord service - missing token');
+        console.log('Skipping Discord service - missing tokens');
     }
 
     if (servicesStarted === 0) {
@@ -76,7 +73,7 @@ async function startServices() {
 }
 
 app.get('/', (req, res) => {
-    res.send('Bot is running!');
+    res.send('Server is running!');
 });
 
 app.get('/health', (req, res) => {
@@ -84,6 +81,6 @@ app.get('/health', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-    startServices();
+    console.log(`Server started on port ${port}`);
+    startServices().catch(console.error);
 });
