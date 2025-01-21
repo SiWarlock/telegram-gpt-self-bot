@@ -96,9 +96,10 @@ export class DiscordBotService {
     }
 
     private async handleMessageCreate(message: AnyMessage, mode: 'bot' | 'self') {
-        // Ignore own messages
+        // For bot mode, ignore bot messages
         if (mode === 'bot' && (message as BotMessage).author.bot) return;
-        if (mode === 'self' && message.author.id === this.selfClient?.user?.id) return;
+        
+        // For self-bot mode, don't filter any messages - we want to process commands in any chat
 
         const messageText = message.content;
         // Only process messages that start with !
