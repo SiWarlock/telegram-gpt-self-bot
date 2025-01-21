@@ -12,7 +12,7 @@ export class TelegramRBACHandler {
 
     async hasPermission(userId: string, permission: string): Promise<boolean> {
         // Owner always has all permissions
-        if (userId === config.telegram.ownerId) {
+        if (userId.toString() === config.telegram.ownerId?.toString()) {
             return true;
         }
         return this.permissionsService.hasPermission(userId, permission);
