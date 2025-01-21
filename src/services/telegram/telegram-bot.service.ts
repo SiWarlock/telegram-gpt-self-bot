@@ -28,24 +28,35 @@ export class TelegramBotService {
             const userId = ctx.from?.id.toString();
             if (userId === this.OWNER_ID) {
                 await ctx.reply(
-                    '🔐 Welcome back, owner! I\'m your management bot.\n\n' +
-                    'Available commands:\n' +
-                    '/dashboard - Open the main dashboard\n' +
-                    '/users - Manage user permissions\n' +
-                    '/roles - Configure roles\n' +
-                    '/settings - Bot settings'
+                    '🔐 *Welcome back, owner\\!*\n\n' +
+                    '📋 *Available Commands:*\n' +
+                    '• /dashboard \\- Open the main dashboard\n' +
+                    '• /users \\- Manage user permissions\n' +
+                    '• /roles \\- Configure roles\n' +
+                    '• /settings \\- Bot settings',
+                    {
+                        parse_mode: 'MarkdownV2',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: '📊 Dashboard', callback_data: 'dashboard' }],
+                                [{ text: '👥 Users', callback_data: 'users' }, { text: '👑 Roles', callback_data: 'roles' }],
+                                [{ text: '⚙️ Settings', callback_data: 'settings' }]
+                            ]
+                        }
+                    }
                 );
             } else {
                 const roles = await this.permissionsService.getUserRoles(userId || '');
                 if (roles.length > 0) {
                     const permissions = await this.permissionsService.getUserPermissions(userId || '');
                     await ctx.reply(
-                        '👋 Welcome! Here are your current permissions:\n\n' +
-                        `🎭 Roles: ${roles.join(', ')}\n` +
-                        `📋 Permissions: ${permissions.join(', ')}`
+                        '👋 *Welcome\\!* Here are your current permissions:\n\n' +
+                        `🎭 *Roles:* ${roles.map(r => `\`${r}\``).join(', ')}\n` +
+                        `📋 *Permissions:* ${permissions.map(p => `\`${p}\``).join(', ')}`,
+                        { parse_mode: 'MarkdownV2' }
                     );
                 } else {
-                    await ctx.reply('⚠️ You don\'t have any roles or permissions yet. Please contact the bot owner.');
+                    await ctx.reply('⚠️ You don\'t have any roles or permissions yet\\. Please contact the bot owner\\.');
                 }
             }
         });
@@ -78,6 +89,38 @@ export class TelegramBotService {
             return next();
         });
 
+        // Handle callback queries
+        this.bot.on('callback_query', async (ctx) => {
+            const query = ctx.callbackQuery;
+            if (!('data' in query)) return;
+            
+            const data = query.data;
+            const userId = ctx.from?.id.toString();
+
+            if (userId !== this.OWNER_ID) {
+                await ctx.answerCbQuery('⛔ Only the bot owner can use these controls.');
+                return;
+            }
+
+            switch (data) {
+                case 'dashboard':
+                    await this.handleDashboard(ctx);
+                    break;
+                case 'users':
+                    await this.handleUsers(ctx);
+                    break;
+                case 'roles':
+                    await this.handleRoles(ctx);
+                    break;
+                case 'settings':
+                    await this.handleSettings(ctx);
+                    break;
+            }
+
+            // Acknowledge the callback query
+            await ctx.answerCbQuery();
+        });
+
         // Handle permission commands
         this.bot.command('grant', this.ownerOnly(async (ctx) => {
             const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
@@ -90,7 +133,12 @@ export class TelegramBotService {
 
             const args = messageText.split(' ').slice(1);
             if (args.length !== 2) {
-                await ctx.reply('❌ Usage: /grant @username permission');
+                await ctx.reply(
+                    '📝 *Usage:* /grant @username permission\n\n' +
+                    '*Example:*\n' +
+                    '`/grant @user use_gpt`',
+                    { parse_mode: 'MarkdownV2' }
+                );
                 return;
             }
 
@@ -108,9 +156,15 @@ export class TelegramBotService {
 
                 const granted = await this.permissionsService.grantPermission(targetUser.user.id.toString(), permission);
                 if (granted) {
-                    await ctx.reply(`✅ Granted "${permission}" permission to @${cleanUsername}`);
+                    await ctx.reply(
+                        `✅ Granted \`${permission}\` permission to @${cleanUsername}`,
+                        { parse_mode: 'MarkdownV2' }
+                    );
                 } else {
-                    await ctx.reply(`ℹ️ @${cleanUsername} already has "${permission}" permission`);
+                    await ctx.reply(
+                        `ℹ️ @${cleanUsername} already has \`${permission}\` permission`,
+                        { parse_mode: 'MarkdownV2' }
+                    );
                 }
             } catch (error) {
                 console.error('Error granting permission:', error);
@@ -203,14 +257,24 @@ export class TelegramBotService {
         this.bot.command('roles', this.ownerOnly(async (ctx) => {
             try {
                 const availableRoles = await this.permissionsService.getAvailableRoles();
-                let message = '🎭 **Available Roles**\n\n';
+                let message = '👑 *Available Roles*\n\n';
                 
                 for (const role of availableRoles) {
                     const permissions = await this.permissionsService.getRolePermissions(role);
-                    message += `• ${role}:\n  ${permissions.join(', ')}\n\n`;
+                    message += `*${role}*\n`;
+                    message += `📋 ${permissions.map(p => `\`${p}\``).join(', ')}\n\n`;
                 }
 
-                await ctx.reply(message, { parse_mode: 'Markdown' });
+                await ctx.reply(message, { 
+                    parse_mode: 'MarkdownV2',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '➕ Add Role', callback_data: 'add_role' }],
+                            [{ text: '✏️ Edit Role', callback_data: 'edit_role' }, { text: '🗑️ Delete Role', callback_data: 'delete_role' }],
+                            [{ text: '🔙 Back', callback_data: 'dashboard' }]
+                        ]
+                    }
+                });
             } catch (error) {
                 console.error('Error listing roles:', error);
                 await ctx.reply('❌ Failed to list roles');
@@ -290,5 +354,105 @@ export class TelegramBotService {
             console.error('Failed to start Telegram bot:', error);
             throw error;
         }
+    }
+
+    // New helper methods for handling callbacks
+    private async handleDashboard(ctx: any) {
+        const stats = await this.getStats();
+        await ctx.editMessageText(
+            '📊 *Dashboard*\n\n' +
+            `👥 Total Users: \`${stats.users}\`\n` +
+            `👑 Total Roles: \`${stats.roles}\`\n` +
+            `🤖 Bot Uptime: \`${stats.uptime}\``,
+            {
+                parse_mode: 'MarkdownV2',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔄 Refresh', callback_data: 'dashboard' }],
+                        [{ text: '👥 Users', callback_data: 'users' }, { text: '👑 Roles', callback_data: 'roles' }],
+                        [{ text: '⚙️ Settings', callback_data: 'settings' }]
+                    ]
+                }
+            }
+        );
+    }
+
+    private async handleUsers(ctx: any) {
+        const users = await this.permissionsService.getAllUsers();
+        let message = '👥 *User Management*\n\n';
+        
+        for (const user of users) {
+            const roles = await this.permissionsService.getUserRoles(user.id);
+            message += `*@${user.username}*\n`;
+            message += `🎭 Roles: ${roles.map(r => `\`${r}\``).join(', ')}\n\n`;
+        }
+
+        await ctx.editMessageText(message, {
+            parse_mode: 'MarkdownV2',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '➕ Add User', callback_data: 'add_user' }],
+                    [{ text: '✏️ Edit User', callback_data: 'edit_user' }, { text: '🗑️ Remove User', callback_data: 'remove_user' }],
+                    [{ text: '🔙 Back', callback_data: 'dashboard' }]
+                ]
+            }
+        });
+    }
+
+    private async handleRoles(ctx: any) {
+        const roles = await this.permissionsService.getAvailableRoles();
+        let message = '👑 *Role Management*\n\n';
+        
+        for (const role of roles) {
+            const permissions = await this.permissionsService.getRolePermissions(role);
+            message += `*${role}*\n`;
+            message += `📋 ${permissions.map(p => `\`${p}\``).join(', ')}\n\n`;
+        }
+
+        await ctx.editMessageText(message, {
+            parse_mode: 'MarkdownV2',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '➕ Add Role', callback_data: 'add_role' }],
+                    [{ text: '✏️ Edit Role', callback_data: 'edit_role' }, { text: '🗑️ Delete Role', callback_data: 'delete_role' }],
+                    [{ text: '🔙 Back', callback_data: 'dashboard' }]
+                ]
+            }
+        });
+    }
+
+    private async handleSettings(ctx: any) {
+        await ctx.editMessageText(
+            '⚙️ *Bot Settings*\n\n' +
+            '• Configure bot behavior\n' +
+            '• Manage permissions\n' +
+            '• Set up notifications',
+            {
+                parse_mode: 'MarkdownV2',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔔 Notifications', callback_data: 'settings_notifications' }],
+                        [{ text: '🔒 Security', callback_data: 'settings_security' }],
+                        [{ text: '🔙 Back', callback_data: 'dashboard' }]
+                    ]
+                }
+            }
+        );
+    }
+
+    private async getStats() {
+        const users = await this.permissionsService.getUserCount();
+        const roles = (await this.permissionsService.getAvailableRoles()).length;
+        const uptime = this.formatUptime(process.uptime());
+
+        return { users, roles, uptime };
+    }
+
+    private formatUptime(uptime: number): string {
+        const days = Math.floor(uptime / 86400);
+        const hours = Math.floor((uptime % 86400) / 3600);
+        const minutes = Math.floor((uptime % 3600) / 60);
+        
+        return `${days}d ${hours}h ${minutes}m`;
     }
 } 

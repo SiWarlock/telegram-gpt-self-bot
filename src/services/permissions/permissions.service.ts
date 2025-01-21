@@ -243,4 +243,28 @@ export class PermissionsService {
             return [];
         }
     }
+
+    // Get all users
+    async getAllUsers(): Promise<any[]> {
+        try {
+            const users = await this.prisma.user.findMany({
+                include: { roles: true }
+            });
+            return users;
+        } catch (error) {
+            console.error('Error getting all users:', error);
+            return [];
+        }
+    }
+
+    // Get total user count
+    async getUserCount(): Promise<number> {
+        try {
+            const count = await this.prisma.user.count();
+            return count;
+        } catch (error) {
+            console.error('Error getting user count:', error);
+            return 0;
+        }
+    }
 } 
