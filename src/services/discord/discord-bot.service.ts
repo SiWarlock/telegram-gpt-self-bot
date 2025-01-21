@@ -15,15 +15,29 @@ interface Log {
 }
 
 export class DiscordBotService {
-    private client: AnyClient;
+    private botClient?: BotClient;
+    private selfClient?: SelfClient;
     private permissionsService: PermissionsService;
     private rbacHandler: DiscordRBACHandler;
-    private isSelfBot: boolean;
 
     constructor() {
-        this.isSelfBot = !config.discord.botToken;
+        const botToken = config.discord.botToken;
+        const userToken = config.discord.token;
         
-        if (this.isSelfBot) {
+        // Initialize available clients
+        if (botToken) {
+            const options: BotOptions = {
+                intents: [
+                    Intents.FLAGS.GUILDS,
+                    Intents.FLAGS.GUILD_MESSAGES,
+                    Intents.FLAGS.GUILD_MEMBERS,
+                    Intents.FLAGS.DIRECT_MESSAGES
+                ]
+            };
+            this.botClient = new BotClient(options);
+        }
+        
+        if (userToken) {
             const options: SelfOptions = {
                 ws: {
                     properties: {
@@ -33,54 +47,49 @@ export class DiscordBotService {
                     }
                 }
             };
-            this.client = new SelfClient(options);
-        } else {
-            const options: BotOptions = {
-                intents: [
-                    Intents.FLAGS.GUILDS,
-                    Intents.FLAGS.GUILD_MESSAGES,
-                    Intents.FLAGS.GUILD_MEMBERS,
-                    Intents.FLAGS.DIRECT_MESSAGES
-                ]
-            };
-            this.client = new BotClient(options);
+            this.selfClient = new SelfClient(options);
+        }
+
+        if (!this.botClient && !this.selfClient) {
+            throw new Error('No Discord token provided. Please set either DISCORD_BOT_TOKEN or DISCORD_TOKEN in your environment.');
         }
 
         this.permissionsService = new PermissionsService();
-        this.rbacHandler = new DiscordRBACHandler(this.client, this.permissionsService);
+        this.rbacHandler = new DiscordRBACHandler(this.botClient || this.selfClient!, this.permissionsService);
         this.setupEventHandlers();
     }
 
     private setupEventHandlers() {
-        if (this.isSelfBot) {
-            const selfClient = this.client as SelfClient;
-            selfClient.on('ready', this.handleReady.bind(this));
-            selfClient.on('messageCreate', this.handleMessageCreate.bind(this));
-        } else {
-            const botClient = this.client as BotClient;
-            botClient.on('ready', this.handleReady.bind(this));
-            botClient.on('messageCreate', this.handleMessageCreate.bind(this));
-            botClient.on('interactionCreate', this.handleInteraction.bind(this));
+        // Set up bot client handlers
+        if (this.botClient) {
+            this.botClient.on('ready', () => this.handleReady('bot'));
+            this.botClient.on('messageCreate', (message: BotMessage) => this.handleMessageCreate(message, 'bot'));
+            this.botClient.on('interactionCreate', this.handleInteraction.bind(this));
+        }
+
+        // Set up self-bot client handlers
+        if (this.selfClient) {
+            this.selfClient.on('ready', () => this.handleReady('self'));
+            this.selfClient.on('messageCreate', (message: SelfMessage) => this.handleMessageCreate(message, 'self'));
         }
     }
 
-    private handleReady() {
-        console.log(`Discord ${this.isSelfBot ? 'self-bot' : 'bot'} started successfully as ${this.client.user?.tag}`);
+    private handleReady(mode: 'bot' | 'self') {
+        const client = mode === 'bot' ? this.botClient : this.selfClient;
+        console.log(`Discord ${mode} client started successfully as ${client?.user?.tag}`);
         
-        if (!this.isSelfBot) {
-            (this.client as BotClient).user?.setPresence({
+        if (mode === 'bot') {
+            this.botClient?.user?.setPresence({
                 activities: [{ name: 'Managing Permissions | !help' }],
                 status: 'online'
             });
         }
     }
 
-    private async handleMessageCreate(message: AnyMessage) {
-        if (this.isSelfBot) {
-            if (message.author.id === this.client.user?.id) return;
-        } else {
-            if ((message as BotMessage).author.bot) return;
-        }
+    private async handleMessageCreate(message: AnyMessage, mode: 'bot' | 'self') {
+        // Ignore own messages
+        if (mode === 'bot' && (message as BotMessage).author.bot) return;
+        if (mode === 'self' && message.author.id === this.selfClient?.user?.id) return;
 
         const messageText = message.content;
         // Only process messages that start with !
@@ -125,7 +134,7 @@ export class DiscordBotService {
                 }
                 return;
             case 'help':
-                await this.sendHelpMessage(message);
+                await this.sendHelpMessage(message, mode);
                 return;
         }
 
@@ -136,20 +145,20 @@ export class DiscordBotService {
                 return;
             }
 
-            const typedMessage = this.isSelfBot ? message as SelfMessage : message as BotMessage;
+            const typedMessage = mode === 'bot' ? message as BotMessage : message as SelfMessage;
 
             switch (command) {
                 case 'dashboard':
-                    await this.showDashboard(typedMessage);
+                    await this.showDashboard(typedMessage, mode);
                     break;
                 case 'users':
-                    await this.showUserManagement(typedMessage);
+                    await this.showUserManagement(typedMessage, mode);
                     break;
                 case 'roles':
-                    await this.showRoleManagement(typedMessage);
+                    await this.showRoleManagement(typedMessage, mode);
                     break;
                 case 'settings':
-                    await this.showSettings(typedMessage);
+                    await this.showSettings(typedMessage, mode);
                     break;
                 case 'grant':
                     await this.rbacHandler.handleGrantCommand(typedMessage);
@@ -178,16 +187,16 @@ export class DiscordBotService {
 
         switch (interaction.customId) {
             case 'dashboard_users':
-                await this.showUserManagement(interaction);
+                await this.showUserManagement(interaction, 'bot');
                 break;
             case 'dashboard_roles':
-                await this.showRoleManagement(interaction);
+                await this.showRoleManagement(interaction, 'bot');
                 break;
             case 'dashboard_settings':
-                await this.showSettings(interaction);
+                await this.showSettings(interaction, 'bot');
                 break;
             case 'back_dashboard':
-                await this.showDashboard(interaction);
+                await this.showDashboard(interaction, 'bot');
                 break;
             case 'add_user':
                 await this.handleAddUser(interaction);
@@ -249,16 +258,26 @@ export class DiscordBotService {
     async start() {
         try {
             console.log('Attempting to connect to Discord...');
-            const token = this.isSelfBot ? config.discord.token : config.discord.botToken;
-            await this.client.login(token);
+            
+            // Start bot client if available
+            if (this.botClient) {
+                await this.botClient.login(config.discord.botToken);
+                console.log('Bot client connected successfully');
+            }
+            
+            // Start self-bot client if available
+            if (this.selfClient) {
+                await this.selfClient.login(config.discord.token);
+                console.log('Self-bot client connected successfully');
+            }
         } catch (error) {
             console.error('Failed to start Discord client:', error);
             throw error;
         }
     }
 
-    private async sendHelpMessage(message: AnyMessage) {
-        const embed = this.isSelfBot ? 
+    private async sendHelpMessage(message: AnyMessage, mode: 'bot' | 'self') {
+        const embed = mode === 'self' ? 
             new SelfEmbed()
                 .setTitle('🤖 Permission Management')
                 .setColor('#00ff00')
@@ -357,7 +376,7 @@ export class DiscordBotService {
     }
 
     private createActionRow(buttons: { customId: string; label: string; style: string; emoji?: string; }[]) {
-        if (this.isSelfBot) {
+        if (this.selfClient) {
             const row = new SelfActionRow();
             row.addComponents(
                 buttons.map(btn => 
@@ -384,14 +403,14 @@ export class DiscordBotService {
         }
     }
 
-    private async showDashboard(message: AnyMessage) {
-        const embed = this.isSelfBot ? new SelfEmbed() : new BotEmbed();
+    private async showDashboard(message: AnyMessage, mode: 'bot' | 'self') {
+        const embed = mode === 'self' ? new SelfEmbed() : new BotEmbed();
         embed.setTitle('🎛️ Bot Management Dashboard')
             .setColor('#00ff00')
             .addField('👥 Users', 'Manage users and their permissions', true)
             .addField('👑 Roles', 'Configure roles and their permissions', true)
             .addField('⚙️ Settings', 'Bot configuration and settings', true)
-            .setFooter({ text: `Running in ${this.isSelfBot ? 'self-bot' : 'bot'} mode` });
+            .setFooter({ text: `Running in ${mode} mode` });
 
         const row = this.createActionRow([
             { customId: 'dashboard_users', label: 'Users', style: 'PRIMARY', emoji: '👥' },
@@ -402,8 +421,8 @@ export class DiscordBotService {
         await message.reply({ embeds: [embed as any], components: [row as any] });
     }
 
-    private async showUserManagement(message: AnyMessage) {
-        const embed = this.isSelfBot ? new SelfEmbed() : new BotEmbed();
+    private async showUserManagement(message: AnyMessage, mode: 'bot' | 'self') {
+        const embed = mode === 'self' ? new SelfEmbed() : new BotEmbed();
         embed.setTitle('👥 User Management')
             .setColor('#00ff00')
             .addField('Current Users', 'Loading user list...')
@@ -419,8 +438,8 @@ export class DiscordBotService {
         await message.reply({ embeds: [embed as any], components: [row as any] });
     }
 
-    private async showRoleManagement(message: AnyMessage) {
-        const embed = this.isSelfBot ? new SelfEmbed() : new BotEmbed();
+    private async showRoleManagement(message: AnyMessage, mode: 'bot' | 'self') {
+        const embed = mode === 'self' ? new SelfEmbed() : new BotEmbed();
         embed.setTitle('👑 Role Management')
             .setColor('#00ff00')
             .addField('Available Roles', 'Loading role list...')
@@ -436,11 +455,11 @@ export class DiscordBotService {
         await message.reply({ embeds: [embed as any], components: [row as any] });
     }
 
-    private async showSettings(message: AnyMessage) {
-        const embed = this.isSelfBot ? new SelfEmbed() : new BotEmbed();
+    private async showSettings(message: AnyMessage, mode: 'bot' | 'self') {
+        const embed = mode === 'self' ? new SelfEmbed() : new BotEmbed();
         embed.setTitle('⚙️ Bot Settings')
             .setColor('#00ff00')
-            .addField('Mode', `Running in ${this.isSelfBot ? 'self-bot' : 'bot'} mode`, true)
+            .addField('Mode', `Running in ${mode} mode`, true)
             .addField('Owner', `<@${config.discord.ownerId}>`, true)
             .addField('Commands', 'Use !help to see available commands', true)
             .setFooter({ text: 'Use the buttons below to manage settings' });
