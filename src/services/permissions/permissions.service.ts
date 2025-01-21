@@ -267,4 +267,62 @@ export class PermissionsService {
             return 0;
         }
     }
+
+    // Get a specific user
+    async getUser(userId: string): Promise<any> {
+        try {
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                include: { roles: true, permissions: true }
+            });
+            return user;
+        } catch (error) {
+            console.error('Error getting user:', error);
+            return null;
+        }
+    }
+
+    // Add a new user
+    async addUser(userData: { id: string; username?: string }): Promise<boolean> {
+        try {
+            await this.prisma.user.create({
+                data: {
+                    id: userData.id,
+                    username: userData.username
+                }
+            });
+            return true;
+        } catch (error) {
+            console.error('Error adding user:', error);
+            return false;
+        }
+    }
+
+    // Remove a user
+    async removeUser(userId: string): Promise<boolean> {
+        try {
+            await this.prisma.user.delete({
+                where: { id: userId }
+            });
+            return true;
+        } catch (error) {
+            console.error('Error removing user:', error);
+            return false;
+        }
+    }
+
+    // Check if user has a specific role
+    async hasRole(userId: string, roleName: string): Promise<boolean> {
+        try {
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                include: { roles: true }
+            });
+
+            return user?.roles.some((r: { name: string }) => r.name === roleName) || false;
+        } catch (error) {
+            console.error('Error checking role:', error);
+            return false;
+        }
+    }
 } 

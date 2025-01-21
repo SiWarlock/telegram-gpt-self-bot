@@ -115,10 +115,53 @@ export class TelegramBotService {
                 case 'settings':
                     await this.handleSettings(ctx);
                     break;
+                case 'add_user':
+                    await this.handleAddUser(ctx);
+                    break;
+                case 'edit_user':
+                    await this.handleEditUserList(ctx);
+                    break;
+                case 'remove_user':
+                    await this.handleRemoveUserList(ctx);
+                    break;
+                case 'back_to_users':
+                    await this.handleUsers(ctx);
+                    break;
+            }
+
+            // Handle dynamic callbacks
+            if (data.startsWith('edit_user_')) {
+                const targetUserId = data.replace('edit_user_', '');
+                await this.handleEditUserMenu(ctx, targetUserId);
+            } else if (data.startsWith('remove_user_')) {
+                const targetUserId = data.replace('remove_user_', '');
+                await this.handleRemoveUserConfirm(ctx, targetUserId);
+            } else if (data.startsWith('toggle_role_')) {
+                const [_, userId, roleName] = data.split('_').slice(1);
+                await this.handleToggleRole(ctx, userId, roleName);
+            } else if (data.startsWith('toggle_perm_')) {
+                const [_, userId, permName] = data.split('_').slice(1);
+                await this.handleTogglePermission(ctx, userId, permName);
+            } else if (data.startsWith('confirm_remove_')) {
+                const targetUserId = data.replace('confirm_remove_', '');
+                await this.handleRemoveUser(ctx, targetUserId);
             }
 
             // Acknowledge the callback query
             await ctx.answerCbQuery();
+        });
+
+        // Handle replies for adding users
+        this.bot.on('message', async (ctx) => {
+            if (!ctx.message || !('reply_to_message' in ctx.message)) return;
+            
+            const replyTo = ctx.message.reply_to_message;
+            if (!replyTo || !('text' in replyTo)) return;
+
+            // Check if this is a reply to our "add user" message
+            if (replyTo.text.includes('Reply with the username')) {
+                await this.handleAddUserReply(ctx);
+            }
         });
 
         // Handle permission commands
@@ -454,5 +497,217 @@ export class TelegramBotService {
         const minutes = Math.floor((uptime % 3600) / 60);
         
         return `${days}d ${hours}h ${minutes}m`;
+    }
+
+    private async handleAddUser(ctx: any) {
+        await ctx.editMessageText(
+            '👤 *Add New User*\n\n' +
+            'Reply to this message with the username of the user you want to add\\.\n' +
+            'You can use either:\\.\n' +
+            '• Username \\(e\\.g\\. @username\\)\n' +
+            '• User ID \\(if known\\)',
+            {
+                parse_mode: 'MarkdownV2',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔙 Back', callback_data: 'back_to_users' }]
+                    ]
+                }
+            }
+        );
+    }
+
+    private async handleEditUserList(ctx: any) {
+        const users = await this.permissionsService.getAllUsers();
+        let message = '✏️ *Select User to Edit*\n\n';
+        
+        const keyboard = [];
+        for (const user of users) {
+            keyboard.push([{
+                text: `@${user.username || user.id}`,
+                callback_data: `edit_user_${user.id}`
+            }]);
+        }
+        keyboard.push([{ text: '🔙 Back', callback_data: 'back_to_users' }]);
+
+        await ctx.editMessageText(message, {
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+    }
+
+    private async handleEditUserMenu(ctx: any, userId: string) {
+        const user = await this.permissionsService.getUser(userId);
+        if (!user) {
+            await ctx.answerCbQuery('User not found');
+            return;
+        }
+
+        const userRoles = await this.permissionsService.getUserRoles(userId);
+        const userPerms = await this.permissionsService.getUserPermissions(userId);
+        const allRoles = await this.permissionsService.getAvailableRoles();
+
+        let message = `✏️ *Edit User: @${user.username || user.id}*\n\n`;
+        message += '*Current Roles:*\n';
+        
+        const keyboard = [];
+        // Add role toggles
+        for (const role of allRoles) {
+            const hasRole = userRoles.includes(role);
+            keyboard.push([{
+                text: `${hasRole ? '✅' : '❌'} Role: ${role}`,
+                callback_data: `toggle_role_${userId}_${role}`
+            }]);
+        }
+
+        // Add navigation
+        keyboard.push([{ text: '🔙 Back to Users', callback_data: 'back_to_users' }]);
+
+        await ctx.editMessageText(message, {
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+    }
+
+    private async handleRemoveUserList(ctx: any) {
+        const users = await this.permissionsService.getAllUsers();
+        let message = '🗑️ *Select User to Remove*\n\n';
+        
+        const keyboard = [];
+        for (const user of users) {
+            keyboard.push([{
+                text: `@${user.username || user.id}`,
+                callback_data: `remove_user_${user.id}`
+            }]);
+        }
+        keyboard.push([{ text: '🔙 Back', callback_data: 'back_to_users' }]);
+
+        await ctx.editMessageText(message, {
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+    }
+
+    private async handleRemoveUserConfirm(ctx: any, userId: string) {
+        const user = await this.permissionsService.getUser(userId);
+        if (!user) {
+            await ctx.answerCbQuery('User not found');
+            return;
+        }
+
+        await ctx.editMessageText(
+            `⚠️ *Confirm Remove User*\n\n` +
+            `Are you sure you want to remove @${user.username || user.id}?`,
+            {
+                parse_mode: 'MarkdownV2',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '✅ Yes, Remove', callback_data: `confirm_remove_${userId}` },
+                            { text: '❌ No, Cancel', callback_data: 'back_to_users' }
+                        ]
+                    ]
+                }
+            }
+        );
+    }
+
+    private async handleToggleRole(ctx: any, userId: string, roleName: string) {
+        const user = await this.permissionsService.getUser(userId);
+        if (!user) {
+            await ctx.answerCbQuery('User not found');
+            return;
+        }
+
+        const hasRole = await this.permissionsService.hasRole(userId, roleName);
+        if (hasRole) {
+            await this.permissionsService.removeRole(userId, roleName);
+        } else {
+            await this.permissionsService.assignRole(userId, roleName);
+        }
+
+        // Refresh the edit menu
+        await this.handleEditUserMenu(ctx, userId);
+    }
+
+    private async handleRemoveUser(ctx: any, userId: string) {
+        try {
+            await this.permissionsService.removeUser(userId);
+            await ctx.editMessageText(
+                '✅ User has been removed successfully\\.',
+                {
+                    parse_mode: 'MarkdownV2',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🔙 Back to Users', callback_data: 'back_to_users' }]
+                        ]
+                    }
+                }
+            );
+        } catch (error) {
+            console.error('Error removing user:', error);
+            await ctx.editMessageText(
+                '❌ Failed to remove user\\.',
+                {
+                    parse_mode: 'MarkdownV2',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🔙 Back to Users', callback_data: 'back_to_users' }]
+                        ]
+                    }
+                }
+            );
+        }
+    }
+
+    private async handleAddUserReply(ctx: any) {
+        const text = ctx.message.text;
+        let userId = text.replace('@', '');
+
+        try {
+            // Try to find user in the chat
+            const chatMember = await ctx.getChatMember(userId);
+            if (!chatMember) {
+                await ctx.reply('❌ User not found in this chat');
+                return;
+            }
+
+            // Add user to database
+            const added = await this.permissionsService.addUser({
+                id: chatMember.user.id.toString(),
+                username: chatMember.user.username
+            });
+
+            if (added) {
+                await ctx.reply(
+                    `✅ User @${chatMember.user.username || chatMember.user.id} has been added\\.\n` +
+                    'Use the edit menu to assign roles\\.',
+                    { parse_mode: 'MarkdownV2' }
+                );
+            } else {
+                await ctx.reply('❌ Failed to add user');
+            }
+        } catch (error) {
+            console.error('Error adding user:', error);
+            await ctx.reply('❌ Failed to add user');
+        }
+    }
+
+    private async handleTogglePermission(ctx: any, userId: string, permName: string) {
+        const user = await this.permissionsService.getUser(userId);
+        if (!user) {
+            await ctx.answerCbQuery('User not found');
+            return;
+        }
+
+        const hasPermission = await this.permissionsService.hasPermission(userId, permName);
+        if (hasPermission) {
+            await this.permissionsService.revokePermission(userId, permName);
+        } else {
+            await this.permissionsService.grantPermission(userId, permName);
+        }
+
+        // Refresh the edit menu
+        await this.handleEditUserMenu(ctx, userId);
     }
 } 
