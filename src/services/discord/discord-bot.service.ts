@@ -83,11 +83,17 @@ export class DiscordBotService {
         }
 
         const messageText = message.content;
-        const senderId = message.author.id;
+        // Only process messages that start with !
+        if (!messageText.startsWith('!')) return;
 
-        // Check if the message is a command
-        const isCommand = messageText.startsWith('!');
-        if (!isCommand) return;
+        const senderId = message.author.id;
+        const command = messageText.split(' ')[0].substring(1);
+
+        // Check if it's a valid command first
+        const isManagementCommand = ['roles', 'grant', 'revoke', 'role', 'perms', 'dashboard', 'users', 'settings'].includes(command);
+        const isRegularCommand = ['gpt', 'tldr', 'help'].includes(command);
+
+        if (!isManagementCommand && !isRegularCommand) return;
 
         // Check base bot permission for any command
         if (!await this.rbacHandler.hasPermission(senderId, 'use_bot')) {
@@ -95,14 +101,34 @@ export class DiscordBotService {
             return;
         }
 
-        // Only owner can use management commands
-        if (messageText.match(/^!(roles|grant|revoke|role|perms|dashboard|users|settings)\b/)) {
+        // Handle regular commands first
+        switch (command) {
+            case 'gpt':
+                if (await this.rbacHandler.hasPermission(senderId, 'use_gpt')) {
+                    // Handle GPT command
+                } else {
+                    await message.reply('⛔ You don\'t have permission to use GPT commands. Please contact the bot owner.');
+                }
+                return;
+            case 'tldr':
+                if (await this.rbacHandler.hasPermission(senderId, 'use_tldr')) {
+                    // Handle TLDR command
+                } else {
+                    await message.reply('⛔ You don\'t have permission to use TLDR commands. Please contact the bot owner.');
+                }
+                return;
+            case 'help':
+                await this.sendHelpMessage(message);
+                return;
+        }
+
+        // Handle management commands
+        if (isManagementCommand) {
             if (senderId !== config.discord.ownerId) {
                 await message.reply("⛔ Only the bot owner can use management commands.");
                 return;
             }
 
-            const command = messageText.split(' ')[0].substring(1);
             const typedMessage = this.isSelfBot ? message as SelfMessage : message as BotMessage;
 
             switch (command) {
@@ -131,32 +157,6 @@ export class DiscordBotService {
                     await this.rbacHandler.handlePermsCommand(typedMessage);
                     break;
             }
-            return;
-        }
-
-        // Handle other commands based on permissions
-        const command = messageText.split(' ')[0].substring(1);
-        switch (command) {
-            case 'gpt':
-                if (await this.rbacHandler.hasPermission(senderId, 'use_gpt')) {
-                    // Handle GPT command
-                } else {
-                    await message.reply('⛔ You don\'t have permission to use GPT commands. Please contact the bot owner.');
-                }
-                break;
-            case 'tldr':
-                if (await this.rbacHandler.hasPermission(senderId, 'use_tldr')) {
-                    // Handle TLDR command
-                } else {
-                    await message.reply('⛔ You don\'t have permission to use TLDR commands. Please contact the bot owner.');
-                }
-                break;
-            case 'help':
-                await this.sendHelpMessage(message);
-                break;
-            default:
-                // Unknown command
-                break;
         }
     }
 
@@ -170,7 +170,6 @@ export class DiscordBotService {
         }
 
         switch (interaction.customId) {
-            // Dashboard navigation
             case 'dashboard_users':
                 await this.showUserManagement(interaction);
                 break;
@@ -183,8 +182,6 @@ export class DiscordBotService {
             case 'back_dashboard':
                 await this.showDashboard(interaction);
                 break;
-
-            // User management
             case 'add_user':
                 await this.handleAddUser(interaction);
                 break;
@@ -194,8 +191,6 @@ export class DiscordBotService {
             case 'remove_user':
                 await this.handleRemoveUser(interaction);
                 break;
-
-            // Role management
             case 'add_role':
                 await this.handleAddRole(interaction);
                 break;
@@ -205,14 +200,53 @@ export class DiscordBotService {
             case 'delete_role':
                 await this.handleDeleteRole(interaction);
                 break;
-
-            // Settings
             case 'toggle_features':
                 await this.handleToggleFeatures(interaction);
                 break;
             case 'view_logs':
                 await this.handleViewLogs(interaction);
                 break;
+        }
+    }
+
+    private async handleToggleFeatures(interaction: any) {
+        const features = ['gpt', 'tldr'];
+        const row = this.createActionRow(
+            features.map(feature => ({
+                customId: `toggle_${feature}`,
+                label: feature.toUpperCase(),
+                style: 'PRIMARY',
+                emoji: '🔄'
+            }))
+        );
+
+        await interaction.reply({
+            content: '⚙️ Select a feature to toggle:',
+            components: [row as any],
+            ephemeral: true
+        });
+    }
+
+    private async handleViewLogs(interaction: any) {
+        const logs = await this.permissionsService.getRecentLogs(10);
+        const logText = logs.length > 0 
+            ? logs.map((log: Log) => `${log.timestamp} - ${log.action} - ${log.details}`).join('\n')
+            : 'No logs found.';
+
+        await interaction.reply({
+            content: `📋 Recent Activity Logs:\n\`\`\`\n${logText}\n\`\`\``,
+            ephemeral: true
+        });
+    }
+
+    async start() {
+        try {
+            console.log('Attempting to connect to Discord...');
+            const token = this.isSelfBot ? config.discord.token : config.discord.botToken;
+            await this.client.login(token);
+        } catch (error) {
+            console.error('Failed to start Discord client:', error);
+            throw error;
         }
     }
 
@@ -474,50 +508,9 @@ export class DiscordBotService {
         );
 
         await interaction.reply({
-            content: '⚠️ Select a user to remove:',
+            content: '🗑️ Select a user to remove:',
             components: [row as any],
             ephemeral: true
         });
     }
-
-    private async handleToggleFeatures(interaction: any) {
-        const features = ['gpt', 'tldr'];
-        const row = this.createActionRow(
-            features.map(feature => ({
-                customId: `toggle_${feature}`,
-                label: feature.toUpperCase(),
-                style: 'PRIMARY',
-                emoji: '🔄'
-            }))
-        );
-
-        await interaction.reply({
-            content: '⚙️ Select a feature to toggle:',
-            components: [row as any],
-            ephemeral: true
-        });
-    }
-
-    private async handleViewLogs(interaction: any) {
-        const logs = await this.permissionsService.getRecentLogs(10);
-        const logText = logs.length > 0 
-            ? logs.map((log: Log) => `${log.timestamp} - ${log.action} - ${log.details}`).join('\n')
-            : 'No logs found.';
-
-        await interaction.reply({
-            content: `📋 Recent Activity Logs:\n\`\`\`\n${logText}\n\`\`\``,
-            ephemeral: true
-        });
-    }
-
-    async start() {
-        try {
-            console.log('Attempting to connect to Discord...');
-            const token = this.isSelfBot ? config.discord.token : config.discord.botToken;
-            await this.client.login(token);
-        } catch (error) {
-            console.error('Failed to start Discord client:', error);
-            throw error;
-        }
-    }
-} 
+}
