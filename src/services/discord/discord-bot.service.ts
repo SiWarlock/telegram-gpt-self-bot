@@ -95,8 +95,11 @@ export class DiscordBotService {
 
         if (!isManagementCommand && !isRegularCommand) return;
 
-        // Check base bot permission for any command
-        if (!await this.rbacHandler.hasPermission(senderId, 'use_bot')) {
+        // Owner has access to all commands
+        const isOwner = senderId === config.discord.ownerId;
+        
+        // Check base bot permission for non-owners
+        if (!isOwner && !await this.rbacHandler.hasPermission(senderId, 'use_bot')) {
             await message.reply("⛔ You don't have permission to use this bot.");
             return;
         }
@@ -104,15 +107,19 @@ export class DiscordBotService {
         // Handle regular commands first
         switch (command) {
             case 'gpt':
-                if (await this.rbacHandler.hasPermission(senderId, 'use_gpt')) {
+                if (isOwner || await this.rbacHandler.hasPermission(senderId, 'use_gpt')) {
                     // Handle GPT command
+                    // TODO: Add your GPT command handling here
+                    await message.reply("GPT command received"); // Temporary response
                 } else {
                     await message.reply('⛔ You don\'t have permission to use GPT commands. Please contact the bot owner.');
                 }
                 return;
             case 'tldr':
-                if (await this.rbacHandler.hasPermission(senderId, 'use_tldr')) {
+                if (isOwner || await this.rbacHandler.hasPermission(senderId, 'use_tldr')) {
                     // Handle TLDR command
+                    // TODO: Add your TLDR command handling here
+                    await message.reply("TLDR command received"); // Temporary response
                 } else {
                     await message.reply('⛔ You don\'t have permission to use TLDR commands. Please contact the bot owner.');
                 }
@@ -124,7 +131,7 @@ export class DiscordBotService {
 
         // Handle management commands
         if (isManagementCommand) {
-            if (senderId !== config.discord.ownerId) {
+            if (!isOwner) {
                 await message.reply("⛔ Only the bot owner can use management commands.");
                 return;
             }
