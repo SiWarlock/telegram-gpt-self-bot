@@ -1,6 +1,7 @@
 import { Client as BotClient, Message as BotMessage } from 'discord.js';
 import { Client as SelfClient, Message as SelfMessage } from 'discord.js-selfbot-v13';
 import { PermissionsService } from '../../permissions/permissions.service';
+import { config } from '../../../config/config';
 
 type AnyClient = BotClient | SelfClient;
 type AnyMessage = BotMessage | SelfMessage;
@@ -12,6 +13,10 @@ export class DiscordRBACHandler {
     ) {}
 
     async hasPermission(userId: string, permission: string): Promise<boolean> {
+        // Owner always has all permissions
+        if (userId === config.discord.ownerId?.toString()) {
+            return true;
+        }
         return this.permissionsService.hasPermission(userId, permission);
     }
 
