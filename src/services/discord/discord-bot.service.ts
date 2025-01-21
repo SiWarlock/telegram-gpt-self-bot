@@ -18,7 +18,8 @@ export class DiscordBotService {
     private botClient?: BotClient;
     private selfClient?: SelfClient;
     private permissionsService: PermissionsService;
-    private rbacHandler: DiscordRBACHandler;
+    private botRBACHandler?: DiscordRBACHandler;
+    private selfRBACHandler?: DiscordRBACHandler;
 
     constructor() {
         const botToken = config.discord.botToken;
@@ -55,7 +56,15 @@ export class DiscordBotService {
         }
 
         this.permissionsService = new PermissionsService();
-        this.rbacHandler = new DiscordRBACHandler(this.botClient || this.selfClient!, this.permissionsService);
+        
+        // Create separate RBAC handlers for each client
+        if (this.botClient) {
+            this.botRBACHandler = new DiscordRBACHandler(this.botClient, this.permissionsService);
+        }
+        if (this.selfClient) {
+            this.selfRBACHandler = new DiscordRBACHandler(this.selfClient, this.permissionsService);
+        }
+        
         this.setupEventHandlers();
     }
 
@@ -107,8 +116,12 @@ export class DiscordBotService {
         // Owner has access to all commands
         const isOwner = senderId === config.discord.ownerId;
         
+        // Get the appropriate RBAC handler
+        const rbacHandler = mode === 'bot' ? this.botRBACHandler : this.selfRBACHandler;
+        if (!rbacHandler) return;
+
         // Check base bot permission for non-owners
-        if (!isOwner && !await this.rbacHandler.hasPermission(senderId, 'use_bot')) {
+        if (!isOwner && !await rbacHandler.hasPermission(senderId, 'use_bot')) {
             await message.reply("⛔ You don't have permission to use this bot.");
             return;
         }
@@ -116,7 +129,7 @@ export class DiscordBotService {
         // Handle regular commands first
         switch (command) {
             case 'gpt':
-                if (isOwner || await this.rbacHandler.hasPermission(senderId, 'use_gpt')) {
+                if (isOwner || await rbacHandler.hasPermission(senderId, 'use_gpt')) {
                     // Handle GPT command
                     // TODO: Add your GPT command handling here
                     await message.reply("GPT command received"); // Temporary response
@@ -125,7 +138,7 @@ export class DiscordBotService {
                 }
                 return;
             case 'tldr':
-                if (isOwner || await this.rbacHandler.hasPermission(senderId, 'use_tldr')) {
+                if (isOwner || await rbacHandler.hasPermission(senderId, 'use_tldr')) {
                     // Handle TLDR command
                     // TODO: Add your TLDR command handling here
                     await message.reply("TLDR command received"); // Temporary response
@@ -161,16 +174,16 @@ export class DiscordBotService {
                     await this.showSettings(typedMessage, mode);
                     break;
                 case 'grant':
-                    await this.rbacHandler.handleGrantCommand(typedMessage);
+                    await rbacHandler.handleGrantCommand(typedMessage);
                     break;
                 case 'revoke':
-                    await this.rbacHandler.handleRevokeCommand(typedMessage);
+                    await rbacHandler.handleRevokeCommand(typedMessage);
                     break;
                 case 'role':
-                    await this.rbacHandler.handleRoleCommand(typedMessage);
+                    await rbacHandler.handleRoleCommand(typedMessage);
                     break;
                 case 'perms':
-                    await this.rbacHandler.handlePermsCommand(typedMessage);
+                    await rbacHandler.handlePermsCommand(typedMessage);
                     break;
             }
         }
