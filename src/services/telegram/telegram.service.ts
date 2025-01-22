@@ -32,7 +32,7 @@ export class TelegramService {
             { connectionRetries: 5 }
         );
         this.openAIService = new OpenAIService();
-        this.permissionsService = new PermissionsService();
+        this.permissionsService = PermissionsService.getInstance();
         this.rbacService = new BotRBACService(this.permissionsService);
         this.gptFeature = new GPTFeature(this.client, this.openAIService, this.conversations);
         this.selfDestructFeature = new SelfDestructFeature(this.client);

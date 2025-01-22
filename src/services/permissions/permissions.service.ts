@@ -1,7 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 
 export class PermissionsService {
+    private static instance: PermissionsService;
     private prisma: PrismaClient;
+    private isInitialized: boolean = false;
 
     // Default roles and their permissions
     private readonly DEFAULT_ROLES = {
@@ -10,12 +12,24 @@ export class PermissionsService {
         user: ['use_gpt', 'use_tldr', 'use_games', 'use_bot']
     };
 
-    constructor() {
+    private constructor() {
         this.prisma = new PrismaClient();
-        this.initializeDefaultRoles();
+        // Initialize roles silently without sending messages
+        this.initializeDefaultRoles().catch(error => {
+            console.error('Failed to initialize default roles:', error);
+        });
+    }
+
+    public static getInstance(): PermissionsService {
+        if (!PermissionsService.instance) {
+            PermissionsService.instance = new PermissionsService();
+        }
+        return PermissionsService.instance;
     }
 
     private async initializeDefaultRoles() {
+        if (this.isInitialized) return;
+        
         try {
             // Create default permissions first
             const allPermissions = new Set<string>();
@@ -49,13 +63,27 @@ export class PermissionsService {
                     }
                 });
             }
+            
+            this.isInitialized = true;
+            // Only log initialization once at startup
+            if (!PermissionsService.instance) {
+                console.log('Default roles and permissions initialized successfully');
+            }
         } catch (error) {
             console.error('Error initializing default roles:', error);
         }
     }
 
+    // Ensure initialization is complete before any operation
+    private async ensureInitialized() {
+        if (!this.isInitialized) {
+            await this.initializeDefaultRoles();
+        }
+    }
+
     // Check if a user has a specific permission
     async hasPermission(userId: string, permissionName: string): Promise<boolean> {
+        await this.ensureInitialized();
         try {
             const user = await this.prisma.user.findUnique({
                 where: { id: userId },
@@ -143,6 +171,7 @@ export class PermissionsService {
                     }
                 }
             });
+            await this.logAction('ROLE_ASSIGN', `Assigned role ${roleName} to user ${userId}`);
             return true;
         } catch (error) {
             console.error('Error assigning role:', error);
@@ -161,6 +190,7 @@ export class PermissionsService {
                     }
                 }
             });
+            await this.logAction('ROLE_REMOVE', `Removed role ${roleName} from user ${userId}`);
             return true;
         } catch (error) {
             console.error('Error removing role:', error);
@@ -168,7 +198,21 @@ export class PermissionsService {
         }
     }
 
-    // Get all permissions for a user (including role-based permissions)
+    // Get user roles
+    async getUserRoles(userId: string): Promise<string[]> {
+        try {
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                include: { roles: true }
+            });
+            return user?.roles.map(r => r.name) || [];
+        } catch (error) {
+            console.error('Error getting user roles:', error);
+            return [];
+        }
+    }
+
+    // Get user permissions (including role-based permissions)
     async getUserPermissions(userId: string): Promise<string[]> {
         try {
             const user = await this.prisma.user.findUnique({
@@ -185,34 +229,12 @@ export class PermissionsService {
 
             if (!user) return [];
 
-            const permissions = new Set<string>();
+            const directPerms = user.permissions.map(p => p.name);
+            const rolePerms = user.roles.flatMap(role => role.permissions.map(p => p.name));
             
-            // Add direct permissions
-            user.permissions.forEach((p: { name: string }) => permissions.add(p.name));
-            
-            // Add role-based permissions
-            user.roles.forEach((role: { permissions: Array<{ name: string }> }) => 
-                role.permissions.forEach(p => permissions.add(p.name))
-            );
-
-            return Array.from(permissions);
+            return [...new Set([...directPerms, ...rolePerms])];
         } catch (error) {
             console.error('Error getting user permissions:', error);
-            return [];
-        }
-    }
-
-    // Get user roles
-    async getUserRoles(userId: string): Promise<string[]> {
-        try {
-            const user = await this.prisma.user.findUnique({
-                where: { id: userId },
-                include: { roles: true }
-            });
-
-            return user?.roles.map((r: { name: string }) => r.name) || [];
-        } catch (error) {
-            console.error('Error getting user roles:', error);
             return [];
         }
     }
@@ -346,5 +368,10 @@ export class PermissionsService {
         } catch (error) {
             console.error('Error logging action:', error);
         }
+    }
+
+    // Get default roles and permissions
+    public getDefaultRoles() {
+        return this.DEFAULT_ROLES;
     }
 } 

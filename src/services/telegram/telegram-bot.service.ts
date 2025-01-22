@@ -26,6 +26,7 @@ export class TelegramBotService extends BaseBotService {
         if (!ownerId) {
             throw new Error('TELEGRAM_OWNER_ID is not configured');
         }
+        console.log('Creating TelegramBotService with owner ID:', ownerId);
         super(ownerId);
 
         if (!config.telegram.botToken) {
@@ -42,6 +43,9 @@ export class TelegramBotService extends BaseBotService {
         this.gameFeature = new GameFeature(this.bot);
 
         this.setupCommands();
+        
+        // Verify owner ID was set correctly
+        console.log('Initialized TelegramBotService with owner ID:', this.ownerId);
     }
 
     protected async resolveUserId(userIdentifier: string): Promise<string | null> {
@@ -77,29 +81,6 @@ export class TelegramBotService extends BaseBotService {
     }
 
     private setupCommands(): void {
-        // Middleware to check permissions for all commands except /start
-        this.bot.use(async (ctx, next) => {
-            if (!ctx.message || !('text' in ctx.message) || !ctx.message.text.startsWith('/')) {
-                return next();
-            }
-
-            const command = ctx.message.text.split(' ')[0].substring(1);
-            if (command === 'start') {
-                return next();
-            }
-
-            const userId = ctx.from?.id.toString();
-            if (!userId) return;
-            
-            // Check base bot permission
-            if (!await this.checkPermission(userId, 'use_bot')) {
-                await ctx.reply('⛔ Access denied. You need appropriate permissions to use this command.');
-                return;
-            }
-
-            return next();
-        });
-
         // Start command - initial greeting and auth check
         this.bot.command('start', async (ctx) => {
             const userId = ctx.from?.id.toString();
@@ -125,9 +106,9 @@ export class TelegramBotService extends BaseBotService {
                     }
                 );
             } else {
-                const roles = await this.rbacService.getUserRoles(userId);
+                const roles = await this.permissionsService.getUserRoles(userId);
                 if (roles.length > 0) {
-                    const permissions = await this.rbacService.getUserPermissions(userId);
+                    const permissions = await this.permissionsService.getUserPermissions(userId);
                     await ctx.reply(
                         '👋 *Welcome\\!* Here are your current permissions:\n\n' +
                         `🎭 *Roles:* ${roles.map(r => `\`${r}\``).join(', ')}\n` +
@@ -142,30 +123,78 @@ export class TelegramBotService extends BaseBotService {
 
         // Handle message commands
         this.bot.on('text', async (ctx) => {
-            const message = ctx.message as TextMessage;
+            const message = ctx.message;
             const userId = ctx.from?.id.toString();
             const chatId = ctx.chat?.id.toString();
 
             if (!message || !userId || !chatId) return;
+
+            // Debug log for owner ID comparison
+            console.log('Message from user ID:', userId);
+            console.log('Owner ID:', this.ownerId);
+            console.log('Is owner?', userId === this.ownerId);
 
             // Convert to common message format
             const botMessage: IBotMessage = {
                 content: message.text,
                 senderId: userId,
                 chatId: chatId,
-                username: ctx.from?.username
+                username: ctx.from?.username || ''
             };
 
-            // Handle RBAC commands
-            if (message.text.match(/^!(roles|grant|revoke|role|perms)\b/)) {
-                const command = message.text.split(' ')[0].substring(1);
-                const response = await this.handleRBACCommand(command, botMessage);
-                await this.sendMessage(chatId, response);
+            // Owner always has all permissions
+            if (userId === this.ownerId) {
+                console.log('Processing owner command');
+                // Handle RBAC commands
+                if (message.text.match(/^!(roles|grant|revoke|role|perms)\b/)) {
+                    const command = message.text.split(' ')[0].substring(1);
+                    const response = await this.handleRBACCommand(command, botMessage);
+                    await this.sendMessage(chatId, response);
+                    return;
+                }
+
+                // Handle feature commands for owner
+                try {
+                    if (message.text.startsWith(config.bot.triggerPrefix)) {
+                        await this.gptFeature.handle(message);
+                    } else if (message.text.startsWith(config.bot.selfDestructPrefix)) {
+                        await this.selfDestructFeature.handle(message);
+                    } else if (message.text.startsWith(config.bot.tldrPrefix)) {
+                        await this.tldrFeature.handle(message);
+                    } else if (message.text.startsWith('!game')) {
+                        await this.gameFeature.handle(message);
+                    }
+                } catch (error) {
+                    console.error('Error handling owner message:', error);
+                    await this.sendMessage(chatId, {
+                        content: '❌ An error occurred while processing your request.'
+                    });
+                }
                 return;
             }
 
-            // Handle feature commands
+            // Non-owner command handling
             try {
+                if (message.text.match(/^!(roles|grant|revoke|role|perms)\b/)) {
+                    if (!await this.checkPermission(userId, 'manage_roles')) {
+                        await this.sendMessage(chatId, {
+                            content: "⛔ You don't have permission to manage roles."
+                        });
+                        return;
+                    }
+                    const command = message.text.split(' ')[0].substring(1);
+                    const response = await this.handleRBACCommand(command, botMessage);
+                    await this.sendMessage(chatId, response);
+                    return;
+                }
+
+                if (!await this.checkPermission(userId, 'use_bot')) {
+                    await this.sendMessage(chatId, {
+                        content: "⛔ You don't have permission to use this bot."
+                    });
+                    return;
+                }
+
                 if (message.text.startsWith(config.bot.triggerPrefix)) {
                     if (await this.checkPermission(userId, 'use_gpt')) {
                         await this.gptFeature.handle(message);

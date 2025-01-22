@@ -25,6 +25,8 @@ export class DiscordBotService extends BaseBotService {
     private botGameFeature?: DiscordGameFeature;
     private selfGameFeature?: DiscordGameFeature;
     private conversations: Map<string, any> = new Map();
+    private botReadyTime?: Date;
+    private selfReadyTime?: Date;
 
     constructor() {
         super(config.discord.ownerId || '');
@@ -98,6 +100,11 @@ export class DiscordBotService extends BaseBotService {
 
     private handleReady(mode: 'bot' | 'self') {
         const client = mode === 'bot' ? this.botClient : this.selfClient;
+        if (mode === 'bot') {
+            this.botReadyTime = new Date();
+        } else {
+            this.selfReadyTime = new Date();
+        }
         console.log(`Discord ${mode} client started successfully as ${client?.user?.tag}`);
         
         if (mode === 'bot') {
@@ -105,6 +112,49 @@ export class DiscordBotService extends BaseBotService {
                 activities: [{ name: 'Managing Permissions | !help' }],
                 status: 'online'
             });
+        }
+    }
+
+    private async setupAdminDashboard(channelId: string) {
+        if (!this.botClient) return;
+
+        try {
+            const channel = await this.botClient.channels.fetch(channelId);
+            if (!channel?.isText()) return;
+
+            const embed = new BotEmbed()
+                .setTitle('🎮 Bot Management Dashboard')
+                .setDescription('Manage users and their permissions')
+                .addFields(
+                    { name: '👥 Users', value: 'Manage users and their permissions', inline: true },
+                    { name: '👑 Roles', value: 'Configure roles and their permissions', inline: true },
+                    { name: '⚙️ Settings', value: 'Bot configuration and settings', inline: true }
+                )
+                .setColor('#0099ff')
+                .setFooter({ text: 'Running in bot mode' });
+
+            const row = new BotActionRow()
+                .addComponents(
+                    new BotButton()
+                        .setCustomId('view_users')
+                        .setLabel('Users')
+                        .setStyle('PRIMARY')
+                        .setEmoji('👥'),
+                    new BotButton()
+                        .setCustomId('view_roles')
+                        .setLabel('Roles')
+                        .setStyle('PRIMARY')
+                        .setEmoji('👑'),
+                    new BotButton()
+                        .setCustomId('view_permissions')
+                        .setLabel('Settings')
+                        .setStyle('PRIMARY')
+                        .setEmoji('⚙️')
+                );
+
+            await channel.send({ embeds: [embed], components: [row] });
+        } catch (error) {
+            console.error('Failed to set up admin dashboard:', error);
         }
     }
 
@@ -119,21 +169,51 @@ export class DiscordBotService extends BaseBotService {
     }
 
     protected async sendMessage(chatId: string, response: IBotResponse): Promise<void> {
-        const channel = await (this.botClient || this.selfClient)?.channels.fetch(chatId);
-        if (channel?.isText()) {
+        try {
+            const client = this.botClient || this.selfClient;
+            if (!client) return;
+
+            // If silent, try to send DM
             if (response.silent) {
-                // Send to DM if silent
-                const user = await (this.botClient || this.selfClient)?.users.fetch(chatId);
-                await user?.send(response.content);
-            } else {
-                await channel.send(response.content);
+                try {
+                    const user = await client.users.fetch(chatId);
+                    await user.send(response.content);
+                    return;
+                } catch (error) {
+                    console.error('Failed to send DM:', error);
+                    // If DM fails, try to send in channel if available
+                }
             }
+
+            // Try to send in channel
+            try {
+                const channel = await client.channels.fetch(chatId);
+                if (!channel?.isText()) return;
+
+                // Check if bot has permission to send messages in this channel
+                const permissions = (channel as any).permissionsFor?.(client.user);
+                if (!permissions?.has('SEND_MESSAGES')) return;
+
+                await channel.send(response.content);
+            } catch (error) {
+                // Silently fail if we can't send the message
+                return;
+            }
+        } catch (error) {
+            // Silently fail if we can't send the message
+            return;
         }
     }
 
     private async handleMessageCreate(message: AnyMessage, mode: 'bot' | 'self') {
         // For bot mode, ignore bot messages
         if (mode === 'bot' && (message as BotMessage).author.bot) return;
+
+        // If this is a self-bot message and the bot client exists and is in the channel, ignore it
+        if (mode === 'self' && this.botClient) {
+            const channel = await this.botClient.channels.fetch(message.channelId).catch(() => null);
+            if (channel) return; // Bot is in this channel, let the bot handle it
+        }
 
         const messageText = message.content;
         if (!messageText) return;
@@ -146,15 +226,57 @@ export class DiscordBotService extends BaseBotService {
             username: message.author.username
         };
 
-        // Handle RBAC commands
-        if (messageText.match(/^!(roles|grant|revoke|role|perms)\b/)) {
-            const command = messageText.split(' ')[0].substring(1);
-            const response = await this.handleRBACCommand(command, botMessage);
-            await this.sendMessage(message.channelId, response);
+        // Handle dashboard command for owner
+        if (messageText === '!dashboard' && message.author.id === this.ownerId) {
+            await this.setupAdminDashboard(message.channelId);
             return;
         }
 
-        // Check base bot permission
+        // Handle RBAC commands for owner
+        if (messageText.match(/^!(roles|grant|revoke|role|perms)\b/)) {
+            if (message.author.id === this.ownerId) {
+                const command = messageText.split(' ')[0].substring(1);
+                const response = await this.handleRBACCommand(command, botMessage);
+                await this.sendMessage(message.channelId, { content: response.content });
+                return;
+            } else if (!await this.checkPermission(message.author.id, 'manage_roles')) {
+                await this.sendMessage(message.channelId, {
+                    content: "⛔ You don't have permission to manage roles."
+                });
+                return;
+            }
+            const command = messageText.split(' ')[0].substring(1);
+            const response = await this.handleRBACCommand(command, botMessage);
+            await this.sendMessage(message.channelId, { content: response.content });
+            return;
+        }
+
+        // Owner always has permission for other commands
+        if (message.author.id === this.ownerId) {
+            try {
+                if (messageText.startsWith(config.bot.triggerPrefix)) {
+                    const feature = mode === 'bot' ? this.botGPTFeature : this.selfGPTFeature;
+                    await feature?.handle(message as any);
+                } else if (messageText.startsWith(config.bot.selfDestructPrefix)) {
+                    const feature = mode === 'bot' ? this.botSelfDestructFeature : this.selfSelfDestructFeature;
+                    await feature?.handle(message as any);
+                } else if (messageText.startsWith(config.bot.tldrPrefix)) {
+                    const feature = mode === 'bot' ? this.botTLDRFeature : this.selfTLDRFeature;
+                    await feature?.handle(message as any);
+                } else if (messageText.startsWith('!game')) {
+                    const feature = mode === 'bot' ? this.botGameFeature : this.selfGameFeature;
+                    await feature?.handle(message as any);
+                }
+            } catch (error) {
+                console.error('Error handling message:', error);
+                await this.sendMessage(message.channelId, {
+                    content: '❌ An error occurred while processing your request.'
+                });
+            }
+            return;
+        }
+
+        // Check base bot permission for non-owners
         if (!await this.checkPermission(message.author.id, 'use_bot')) {
             await this.sendMessage(message.channelId, {
                 content: "⛔ You don't have permission to use this bot."
@@ -162,7 +284,7 @@ export class DiscordBotService extends BaseBotService {
             return;
         }
 
-        // Handle feature commands
+        // Handle feature commands for non-owners
         try {
             if (messageText.startsWith(config.bot.triggerPrefix)) {
                 if (await this.checkPermission(message.author.id, 'use_gpt')) {
@@ -205,8 +327,125 @@ export class DiscordBotService extends BaseBotService {
             return;
         }
 
-        // Handle dashboard interactions here...
-        // This part can be moved to a separate DashboardService if it grows too large
+        try {
+            switch (interaction.customId) {
+                case 'view_users':
+                    const users = await this.permissionsService.getAllUsers();
+                    const userList = users.map(u => `- ${u.id}`).join('\n') || 'No users found';
+                    await interaction.reply({
+                        content: `📋 Users:\n${userList}`,
+                        ephemeral: true
+                    });
+                    break;
+                case 'view_roles':
+                    const roles = await this.permissionsService.getAvailableRoles();
+                    const roleList = roles.join('\n') || 'No roles found';
+                    await interaction.reply({
+                        content: `👑 Roles:\n${roleList}`,
+                        ephemeral: true
+                    });
+                    break;
+                case 'view_permissions':
+                    const perms = Object.values(this.permissionsService.getDefaultRoles()).flat();
+                    const uniquePerms = [...new Set(perms)];
+                    const permList = uniquePerms.join('\n') || 'No permissions found';
+                    await interaction.reply({
+                        content: `🔑 Permissions:\n${permList}`,
+                        ephemeral: true
+                    });
+                    break;
+                default:
+                    await interaction.reply({
+                        content: '❌ Unknown button interaction',
+                        ephemeral: true
+                    });
+            }
+        } catch (error) {
+            console.error('Error handling button interaction:', error);
+            await interaction.reply({
+                content: '❌ An error occurred while processing your request',
+                ephemeral: true
+            });
+        }
+    }
+
+    protected async handleRBACCommand(command: string, message: IBotMessage): Promise<IBotResponse> {
+        const args = message.content.split(' ').slice(1);
+        const isOwner = message.senderId === this.ownerId;
+
+        switch (command) {
+            case 'roles':
+                const roles = this.permissionsService.getDefaultRoles();
+                let response = '👑 Available Roles:\n\n';
+                for (const [role, permissions] of Object.entries(roles)) {
+                    response += `${role}:\n📋 ${permissions.join(', ')}\n\n`;
+                }
+                return { content: response };
+
+            case 'role':
+                if (!isOwner) {
+                    return { content: "⛔ Only the owner can assign roles." };
+                }
+                if (args.length < 2) {
+                    return { content: "❌ Usage: !role @user <role>" };
+                }
+                const targetUser = args[0].replace(/[<@!>]/g, '');
+                const roleName = args[1].toLowerCase();
+                const validRoles = Object.keys(this.permissionsService.getDefaultRoles());
+                
+                if (!validRoles.includes(roleName)) {
+                    return { content: `❌ Invalid role. Valid roles are: ${validRoles.join(', ')}` };
+                }
+
+                try {
+                    const userId = await this.resolveUserId(targetUser);
+                    if (!userId) {
+                        return { content: "❌ Could not find that user." };
+                    }
+
+                    // Remove existing roles first
+                    for (const role of validRoles) {
+                        await this.permissionsService.removeRole(userId, role);
+                    }
+
+                    // Assign new role
+                    const success = await this.permissionsService.assignRole(userId, roleName);
+                    return {
+                        content: success 
+                            ? `✅ Successfully assigned role ${roleName} to <@${userId}>`
+                            : "❌ Failed to assign role."
+                    };
+                } catch (error) {
+                    console.error('Error assigning role:', error);
+                    return { content: "❌ An error occurred while assigning the role." };
+                }
+
+            case 'perms':
+                if (args.length === 0) {
+                    // Show all permissions
+                    const allPerms = new Set<string>();
+                    Object.values(this.permissionsService.getDefaultRoles()).forEach(perms => 
+                        perms.forEach(p => allPerms.add(p))
+                    );
+                    return { content: `🔑 Available Permissions:\n${Array.from(allPerms).join('\n')}` };
+                } else {
+                    // Show user permissions
+                    const userId = await this.resolveUserId(args[0]);
+                    if (!userId) {
+                        return { content: "❌ Could not find that user." };
+                    }
+                    const userRoles = await this.permissionsService.getUserRoles(userId);
+                    const userPerms = await this.permissionsService.getUserPermissions(userId);
+                    return {
+                        content: `👤 User Permissions for <@${userId}>:\n` +
+                                `Roles: ${userRoles.join(', ') || 'None'}\n` +
+                                `Permissions: ${userPerms.join(', ') || 'None'}`
+                    };
+                }
+
+            default:
+                return { content: "❌ Unknown RBAC command." };
+        }
     }
 
     public async start(): Promise<void> {

@@ -20,12 +20,16 @@ export abstract class BaseBotService {
 
     constructor(ownerId: string) {
         this.ownerId = ownerId;
-        this.permissionsService = new PermissionsService();
+        this.permissionsService = PermissionsService.getInstance();
         this.rbacService = new BotRBACService(this.permissionsService);
     }
 
     protected async checkPermission(userId: string, permission: string): Promise<boolean> {
-        return this.rbacService.hasPermission(userId, permission, this.ownerId);
+        // Owner always has all permissions
+        if (userId === this.ownerId) {
+            return true;
+        }
+        return await this.permissionsService.hasPermission(userId, permission);
     }
 
     protected async handleRBACCommand(command: string, message: IBotMessage): Promise<IBotResponse> {
