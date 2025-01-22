@@ -8,7 +8,7 @@ export class TLDRFeature {
         private openAIService: OpenAIService
     ) {}
 
-    async handle(message: Api.Message): Promise<void> {
+    async handle(message: any): Promise<void> {
         const chatId = message.chatId?.toString() || message.peerId?.toString();
         if (!chatId) return;
 

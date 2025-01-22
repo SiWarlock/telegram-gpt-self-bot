@@ -4,7 +4,7 @@ import { config } from '../../../config/config';
 export class SelfDestructFeature {
     constructor(private client: any) {}
 
-    async handle(message: Api.Message): Promise<void> {
+    async handle(message: any): Promise<void> {
         const messageText = message.text || '';
         const chatId = message.chatId?.toString() || message.peerId?.toString();
 

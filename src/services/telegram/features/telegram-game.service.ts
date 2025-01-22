@@ -22,12 +22,12 @@ interface ConnectFourGame {
     lastActive: number;
 }
 
-export class TelegramGameFeature {
+export class GameFeature {
     private tttGames: Map<string, TicTacToeGame> = new Map();
     private c4Games: Map<string, ConnectFourGame> = new Map();
     private readonly GAME_TIMEOUT = 5 * 60 * 1000;
 
-    constructor(private client: TelegramClient) {
+    constructor(private client: any) {
         setInterval(() => this.cleanupOldGames(), 60 * 1000);
     }
 
@@ -36,10 +36,10 @@ export class TelegramGameFeature {
         return message.peerId as EntityLike;
     }
 
-    async handle(event: NewMessageEvent): Promise<void> {
-        const message = event.message;
-        const text = message.message;
-        const chatId = this.getChatId(message);
+    async handle(event: any): Promise<void> {
+        const message = 'message' in event ? event.message : event;
+        const text = message.text || message.message;
+        const chatId = message.chat?.id || message.chatId || message.peerId;
         if (!text || !chatId) return;
 
         const args = text.slice(COMMANDS.GAME.length).trim().split(' ');

@@ -1,8 +1,7 @@
 import { Client as BotClient, Message as BotMessage, MessageEmbed as BotEmbed, MessageActionRow as BotActionRow, MessageButton as BotButton, Intents, ClientOptions as BotOptions } from 'discord.js';
 import { Client as SelfClient, Message as SelfMessage, MessageEmbed as SelfEmbed, MessageActionRow as SelfActionRow, MessageButton as SelfButton, ClientOptions as SelfOptions } from 'discord.js-selfbot-v13';
 import { config } from '../../config/config';
-import { PermissionsService } from '../permissions/permissions.service';
-import { DiscordRBACHandler } from './handlers/discord-rbac.handler';
+import { BaseBotService, IBotMessage, IBotResponse } from '../bot/base-bot.service';
 import { OpenAIService } from '../openai.service';
 import { DiscordGPTFeature } from './features/discord-gpt.service';
 import { DiscordTLDRFeature } from './features/discord-tldr.service';
@@ -13,18 +12,9 @@ type AnyClient = BotClient | SelfClient;
 type AnyMessage = BotMessage | SelfMessage;
 type AnyEmbed = BotEmbed | SelfEmbed;
 
-interface Log {
-    timestamp: Date;
-    action: string;
-    details: string;
-}
-
-export class DiscordBotService {
+export class DiscordBotService extends BaseBotService {
     private botClient?: BotClient;
     private selfClient?: SelfClient;
-    private permissionsService: PermissionsService;
-    private botRBACHandler?: DiscordRBACHandler;
-    private selfRBACHandler?: DiscordRBACHandler;
     private openAIService: OpenAIService;
     private botGPTFeature?: DiscordGPTFeature;
     private selfGPTFeature?: DiscordGPTFeature;
@@ -37,6 +27,8 @@ export class DiscordBotService {
     private conversations: Map<string, any> = new Map();
 
     constructor() {
+        super(config.discord.ownerId || '');
+
         const botToken = config.discord.botToken;
         const userToken = config.discord.token;
         
@@ -70,19 +62,16 @@ export class DiscordBotService {
             throw new Error('No Discord token provided. Please set either DISCORD_BOT_TOKEN or DISCORD_TOKEN in your environment.');
         }
 
-        this.permissionsService = new PermissionsService();
         this.openAIService = new OpenAIService();
         
-        // Create separate handlers for each client
+        // Initialize features for each client
         if (this.botClient) {
-            this.botRBACHandler = new DiscordRBACHandler(this.botClient, this.permissionsService);
             this.botGPTFeature = new DiscordGPTFeature(this.botClient as any, this.openAIService, this.conversations);
             this.botTLDRFeature = new DiscordTLDRFeature(this.botClient as any, this.openAIService);
             this.botSelfDestructFeature = new DiscordSelfDestructFeature(this.botClient as any);
             this.botGameFeature = new DiscordGameFeature(this.botClient as any);
         }
         if (this.selfClient) {
-            this.selfRBACHandler = new DiscordRBACHandler(this.selfClient, this.permissionsService);
             this.selfGPTFeature = new DiscordGPTFeature(this.selfClient as any, this.openAIService, this.conversations);
             this.selfTLDRFeature = new DiscordTLDRFeature(this.selfClient as any, this.openAIService);
             this.selfSelfDestructFeature = new DiscordSelfDestructFeature(this.selfClient as any);
@@ -119,124 +108,88 @@ export class DiscordBotService {
         }
     }
 
+    protected async resolveUserId(userIdentifier: string): Promise<string | null> {
+        const mention = userIdentifier.replace(/[<@!>]/g, '');
+        try {
+            const user = await (this.botClient || this.selfClient)?.users.fetch(mention);
+            return user?.id || null;
+        } catch {
+            return null;
+        }
+    }
+
+    protected async sendMessage(chatId: string, response: IBotResponse): Promise<void> {
+        const channel = await (this.botClient || this.selfClient)?.channels.fetch(chatId);
+        if (channel?.isText()) {
+            if (response.silent) {
+                // Send to DM if silent
+                const user = await (this.botClient || this.selfClient)?.users.fetch(chatId);
+                await user?.send(response.content);
+            } else {
+                await channel.send(response.content);
+            }
+        }
+    }
+
     private async handleMessageCreate(message: AnyMessage, mode: 'bot' | 'self') {
         // For bot mode, ignore bot messages
         if (mode === 'bot' && (message as BotMessage).author.bot) return;
-        
-        // For self-bot mode, don't filter any messages - we want to process commands in any chat
 
         const messageText = message.content;
-        // Only process messages that start with ! or configured prefixes
-        if (!messageText.startsWith('!') && 
-            !messageText.startsWith(config.bot.triggerPrefix) && 
-            !messageText.startsWith(config.bot.selfDestructPrefix) && 
-            !messageText.startsWith(config.bot.tldrPrefix) && 
-            !messageText.startsWith(config.bot.gamePrefix)) return;
+        if (!messageText) return;
 
-        const senderId = message.author.id;
-        const command = messageText.split(' ')[0].substring(1);
+        // Convert to common message format
+        const botMessage: IBotMessage = {
+            content: messageText,
+            senderId: message.author.id,
+            chatId: message.channelId,
+            username: message.author.username
+        };
 
-        // Check if it's a valid command first
-        const isManagementCommand = ['roles', 'grant', 'revoke', 'role', 'perms', 'dashboard', 'users', 'settings'].includes(command);
-        const isRegularCommand = ['gpt', 'tldr', 'help', 'sd', 'game'].includes(command);
-
-        if (!isManagementCommand && !isRegularCommand) return;
-
-        // Owner has access to all commands
-        const isOwner = senderId === config.discord.ownerId;
-        
-        // Get the appropriate RBAC handler
-        const rbacHandler = mode === 'bot' ? this.botRBACHandler : this.selfRBACHandler;
-        if (!rbacHandler) return;
-
-        // Check base bot permission for non-owners
-        if (!isOwner && !await rbacHandler.hasPermission(senderId, 'use_bot')) {
-            await message.reply("⛔ You don't have permission to use this bot.");
+        // Handle RBAC commands
+        if (messageText.match(/^!(roles|grant|revoke|role|perms)\b/)) {
+            const command = messageText.split(' ')[0].substring(1);
+            const response = await this.handleRBACCommand(command, botMessage);
+            await this.sendMessage(message.channelId, response);
             return;
         }
 
-        // Handle regular commands first
-        switch (command) {
-            case 'gpt':
-                if (isOwner || await rbacHandler.hasPermission(senderId, 'use_gpt')) {
-                    const gptFeature = mode === 'bot' ? this.botGPTFeature : this.selfGPTFeature;
-                    if (gptFeature) {
-                        await gptFeature.handle(message as any);
-                    }
-                } else {
-                    await message.reply('⛔ You don\'t have permission to use GPT commands.');
-                }
-                return;
-            case 'tldr':
-                if (isOwner || await rbacHandler.hasPermission(senderId, 'use_tldr')) {
-                    const tldrFeature = mode === 'bot' ? this.botTLDRFeature : this.selfTLDRFeature;
-                    if (tldrFeature) {
-                        await tldrFeature.handle(message as any);
-                    }
-                } else {
-                    await message.reply('⛔ You don\'t have permission to use TLDR commands.');
-                }
-                return;
-            case 'sd':
-                if (isOwner || await rbacHandler.hasPermission(senderId, 'use_bot')) {
-                    const selfDestructFeature = mode === 'bot' ? this.botSelfDestructFeature : this.selfSelfDestructFeature;
-                    if (selfDestructFeature) {
-                        await selfDestructFeature.handle(message as any);
-                    }
-                } else {
-                    await message.reply('⛔ You don\'t have permission to use self-destruct messages.');
-                }
-                return;
-            case 'game':
-                if (isOwner || await rbacHandler.hasPermission(senderId, 'use_games')) {
-                    const gameFeature = mode === 'bot' ? this.botGameFeature : this.selfGameFeature;
-                    if (gameFeature) {
-                        await gameFeature.handle(message as any);
-                    }
-                } else {
-                    await message.reply('⛔ You don\'t have permission to use game commands.');
-                }
-                return;
-            case 'help':
-                await this.sendHelpMessage(message, mode);
-                return;
+        // Check base bot permission
+        if (!await this.checkPermission(message.author.id, 'use_bot')) {
+            await this.sendMessage(message.channelId, {
+                content: "⛔ You don't have permission to use this bot."
+            });
+            return;
         }
 
-        // Handle management commands
-        if (isManagementCommand) {
-            if (!isOwner) {
-                await message.reply("⛔ Only the bot owner can use management commands.");
-                return;
+        // Handle feature commands
+        try {
+            if (messageText.startsWith(config.bot.triggerPrefix)) {
+                if (await this.checkPermission(message.author.id, 'use_gpt')) {
+                    const feature = mode === 'bot' ? this.botGPTFeature : this.selfGPTFeature;
+                    await feature?.handle(message as any);
+                }
+            } else if (messageText.startsWith(config.bot.selfDestructPrefix)) {
+                if (await this.checkPermission(message.author.id, 'use_bot')) {
+                    const feature = mode === 'bot' ? this.botSelfDestructFeature : this.selfSelfDestructFeature;
+                    await feature?.handle(message as any);
+                }
+            } else if (messageText.startsWith(config.bot.tldrPrefix)) {
+                if (await this.checkPermission(message.author.id, 'use_tldr')) {
+                    const feature = mode === 'bot' ? this.botTLDRFeature : this.selfTLDRFeature;
+                    await feature?.handle(message as any);
+                }
+            } else if (messageText.startsWith('!game')) {
+                if (await this.checkPermission(message.author.id, 'use_games')) {
+                    const feature = mode === 'bot' ? this.botGameFeature : this.selfGameFeature;
+                    await feature?.handle(message as any);
+                }
             }
-
-            const typedMessage = mode === 'bot' ? message as BotMessage : message as SelfMessage;
-
-            switch (command) {
-                case 'dashboard':
-                    await this.showDashboard(typedMessage, mode);
-                    break;
-                case 'users':
-                    await this.showUserManagement(typedMessage, mode);
-                    break;
-                case 'roles':
-                    await this.showRoleManagement(typedMessage, mode);
-                    break;
-                case 'settings':
-                    await this.showSettings(typedMessage, mode);
-                    break;
-                case 'grant':
-                    await rbacHandler.handleGrantCommand(typedMessage);
-                    break;
-                case 'revoke':
-                    await rbacHandler.handleRevokeCommand(typedMessage);
-                    break;
-                case 'role':
-                    await rbacHandler.handleRoleCommand(typedMessage);
-                    break;
-                case 'perms':
-                    await rbacHandler.handlePermsCommand(typedMessage);
-                    break;
-            }
+        } catch (error) {
+            console.error('Error handling message:', error);
+            await this.sendMessage(message.channelId, {
+                content: '❌ An error occurred while processing your request.'
+            });
         }
     }
 
@@ -244,82 +197,19 @@ export class DiscordBotService {
         if (!interaction.isButton()) return;
 
         const userId = interaction.user.id;
-        if (userId !== config.discord.ownerId) {
-            await interaction.reply({ content: '⛔ Only the bot owner can use these controls.', ephemeral: true });
+        if (userId !== this.ownerId) {
+            await interaction.reply({ 
+                content: '⛔ Only the bot owner can use these controls.',
+                ephemeral: true 
+            });
             return;
         }
 
-        switch (interaction.customId) {
-            case 'dashboard_users':
-                await this.showUserManagement(interaction, 'bot');
-                break;
-            case 'dashboard_roles':
-                await this.showRoleManagement(interaction, 'bot');
-                break;
-            case 'dashboard_settings':
-                await this.showSettings(interaction, 'bot');
-                break;
-            case 'back_dashboard':
-                await this.showDashboard(interaction, 'bot');
-                break;
-            case 'add_user':
-                await this.handleAddUser(interaction);
-                break;
-            case 'edit_user':
-                await this.handleEditUser(interaction);
-                break;
-            case 'remove_user':
-                await this.handleRemoveUser(interaction);
-                break;
-            case 'add_role':
-                await this.handleAddRole(interaction);
-                break;
-            case 'edit_role':
-                await this.handleEditRole(interaction);
-                break;
-            case 'delete_role':
-                await this.handleDeleteRole(interaction);
-                break;
-            case 'toggle_features':
-                await this.handleToggleFeatures(interaction);
-                break;
-            case 'view_logs':
-                await this.handleViewLogs(interaction);
-                break;
-        }
+        // Handle dashboard interactions here...
+        // This part can be moved to a separate DashboardService if it grows too large
     }
 
-    private async handleToggleFeatures(interaction: any) {
-        const features = ['gpt', 'tldr'];
-        const row = this.createActionRow(
-            features.map(feature => ({
-                customId: `toggle_${feature}`,
-                label: feature.toUpperCase(),
-                style: 'PRIMARY',
-                emoji: '🔄'
-            }))
-        );
-
-        await interaction.reply({
-            content: '⚙️ Select a feature to toggle:',
-            components: [row as any],
-            ephemeral: true
-        });
-    }
-
-    private async handleViewLogs(interaction: any) {
-        const logs = await this.permissionsService.getRecentLogs(10);
-        const logText = logs.length > 0 
-            ? logs.map((log: Log) => `${log.timestamp} - ${log.action} - ${log.details}`).join('\n')
-            : 'No logs found.';
-
-        await interaction.reply({
-            content: `📋 Recent Activity Logs:\n\`\`\`\n${logText}\n\`\`\``,
-            ephemeral: true
-        });
-    }
-
-    async start() {
+    public async start(): Promise<void> {
         try {
             console.log('Attempting to connect to Discord...');
             
@@ -338,269 +228,5 @@ export class DiscordBotService {
             console.error('Failed to start Discord client:', error);
             throw error;
         }
-    }
-
-    private async sendHelpMessage(message: AnyMessage, mode: 'bot' | 'self') {
-        const embed = mode === 'self' ? 
-            new SelfEmbed()
-                .setTitle('🤖 Permission Management')
-                .setColor('#00ff00')
-                .addField('General Commands', '`!help` - Show this help message\n`!perms` - Check your permissions')
-                .addField('Admin Commands (Owner Only)', 
-                    '`!roles` - List all roles\n' +
-                    '`!grant @user permission` - Grant permission\n' +
-                    '`!revoke @user permission` - Revoke permission\n' +
-                    '`!role @user rolename` - Assign role\n' +
-                    '`!perms @user` - Check user permissions'
-                )
-                .setFooter({ text: 'Running in self-bot mode' })
-            :
-            new BotEmbed()
-                .setTitle('🤖 Permission Management')
-                .setColor('#00ff00')
-                .addField('General Commands', '`!help` - Show this help message\n`!perms` - Check your permissions')
-                .addField('Admin Commands (Owner Only)', 
-                    '`!roles` - List all roles\n' +
-                    '`!grant @user permission` - Grant permission\n' +
-                    '`!revoke @user permission` - Revoke permission\n' +
-                    '`!role @user rolename` - Assign role\n' +
-                    '`!perms @user` - Check user permissions'
-                )
-                .setFooter({ text: 'Running in bot mode' });
-
-        await message.reply({ embeds: [embed as any] });
-    }
-
-    private async handleAddRole(interaction: any) {
-        const modal = {
-            title: 'Add New Role',
-            custom_id: 'add_role_modal',
-            components: [{
-                type: 1,
-                components: [{
-                    type: 4,
-                    custom_id: 'role_name',
-                    label: 'Role Name',
-                    style: 1,
-                    min_length: 1,
-                    max_length: 32,
-                    placeholder: 'Enter role name',
-                    required: true
-                }]
-            }]
-        };
-
-        await interaction.showModal(modal);
-    }
-
-    private async handleEditRole(interaction: any) {
-        const roles = await this.permissionsService.getAvailableRoles();
-        const options = roles.map(role => ({
-            label: role,
-            value: role,
-            description: `Edit permissions for ${role} role`
-        }));
-
-        const row = new SelfActionRow()
-            .addComponents(
-                new SelfButton()
-                    .setCustomId('select_role')
-                    .setLabel('Select Role')
-                    .setStyle('PRIMARY')
-            );
-
-        await interaction.reply({
-            content: '✏️ Select a role to edit:',
-            components: [row],
-            ephemeral: true
-        });
-    }
-
-    private async handleDeleteRole(interaction: any) {
-        const roles = await this.permissionsService.getAvailableRoles();
-        const options = roles.map(role => ({
-            label: role,
-            value: role,
-            description: `Delete ${role} role`
-        }));
-
-        const row = new SelfActionRow()
-            .addComponents(
-                new SelfButton()
-                    .setCustomId('select_role_delete')
-                    .setLabel('Select Role')
-                    .setStyle('DANGER')
-            );
-
-        await interaction.reply({
-            content: '🗑️ Select a role to delete:',
-            components: [row],
-            ephemeral: true
-        });
-    }
-
-    private createActionRow(buttons: { customId: string; label: string; style: string; emoji?: string; }[]) {
-        if (this.selfClient) {
-            const row = new SelfActionRow();
-            row.addComponents(
-                buttons.map(btn => 
-                    new SelfButton()
-                        .setCustomId(btn.customId)
-                        .setLabel(btn.label)
-                        .setStyle(btn.style as any)
-                        .setEmoji(btn.emoji || '')
-                )
-            );
-            return row;
-        } else {
-            const row = new BotActionRow();
-            row.addComponents(
-                buttons.map(btn => 
-                    new BotButton()
-                        .setCustomId(btn.customId)
-                        .setLabel(btn.label)
-                        .setStyle(btn.style as any)
-                        .setEmoji(btn.emoji || '')
-                )
-            );
-            return row;
-        }
-    }
-
-    private async showDashboard(message: AnyMessage, mode: 'bot' | 'self') {
-        const embed = mode === 'self' ? new SelfEmbed() : new BotEmbed();
-        embed.setTitle('🎛️ Bot Management Dashboard')
-            .setColor('#00ff00')
-            .addField('👥 Users', 'Manage users and their permissions', true)
-            .addField('👑 Roles', 'Configure roles and their permissions', true)
-            .addField('⚙️ Settings', 'Bot configuration and settings', true)
-            .setFooter({ text: `Running in ${mode} mode` });
-
-        const row = this.createActionRow([
-            { customId: 'dashboard_users', label: 'Users', style: 'PRIMARY', emoji: '👥' },
-            { customId: 'dashboard_roles', label: 'Roles', style: 'PRIMARY', emoji: '👑' },
-            { customId: 'dashboard_settings', label: 'Settings', style: 'PRIMARY', emoji: '⚙️' }
-        ]);
-
-        await message.reply({ embeds: [embed as any], components: [row as any] });
-    }
-
-    private async showUserManagement(message: AnyMessage, mode: 'bot' | 'self') {
-        const embed = mode === 'self' ? new SelfEmbed() : new BotEmbed();
-        embed.setTitle('👥 User Management')
-            .setColor('#00ff00')
-            .addField('Current Users', 'Loading user list...')
-            .setFooter({ text: 'Use the buttons below to manage users' });
-
-        const row = this.createActionRow([
-            { customId: 'add_user', label: 'Add User', style: 'SUCCESS', emoji: '➕' },
-            { customId: 'edit_user', label: 'Edit User', style: 'PRIMARY', emoji: '✏️' },
-            { customId: 'remove_user', label: 'Remove User', style: 'DANGER', emoji: '🗑️' },
-            { customId: 'back_dashboard', label: 'Back', style: 'SECONDARY', emoji: '◀️' }
-        ]);
-
-        await message.reply({ embeds: [embed as any], components: [row as any] });
-    }
-
-    private async showRoleManagement(message: AnyMessage, mode: 'bot' | 'self') {
-        const embed = mode === 'self' ? new SelfEmbed() : new BotEmbed();
-        embed.setTitle('👑 Role Management')
-            .setColor('#00ff00')
-            .addField('Available Roles', 'Loading role list...')
-            .setFooter({ text: 'Use the buttons below to manage roles' });
-
-        const row = this.createActionRow([
-            { customId: 'add_role', label: 'Add Role', style: 'SUCCESS', emoji: '➕' },
-            { customId: 'edit_role', label: 'Edit Role', style: 'PRIMARY', emoji: '✏️' },
-            { customId: 'delete_role', label: 'Delete Role', style: 'DANGER', emoji: '🗑️' },
-            { customId: 'back_dashboard', label: 'Back', style: 'SECONDARY', emoji: '◀️' }
-        ]);
-
-        await message.reply({ embeds: [embed as any], components: [row as any] });
-    }
-
-    private async showSettings(message: AnyMessage, mode: 'bot' | 'self') {
-        const embed = mode === 'self' ? new SelfEmbed() : new BotEmbed();
-        embed.setTitle('⚙️ Bot Settings')
-            .setColor('#00ff00')
-            .addField('Mode', `Running in ${mode} mode`, true)
-            .addField('Owner', `<@${config.discord.ownerId}>`, true)
-            .addField('Commands', 'Use !help to see available commands', true)
-            .setFooter({ text: 'Use the buttons below to manage settings' });
-
-        const row = this.createActionRow([
-            { customId: 'toggle_features', label: 'Toggle Features', style: 'PRIMARY', emoji: '🔧' },
-            { customId: 'view_logs', label: 'View Logs', style: 'PRIMARY', emoji: '📋' },
-            { customId: 'back_dashboard', label: 'Back', style: 'SECONDARY', emoji: '◀️' }
-        ]);
-
-        await message.reply({ embeds: [embed as any], components: [row as any] });
-    }
-
-    private async handleAddUser(interaction: any) {
-        const modal = {
-            title: 'Add New User',
-            custom_id: 'add_user_modal',
-            components: [{
-                type: 1,
-                components: [{
-                    type: 4,
-                    custom_id: 'user_id',
-                    label: 'User ID or @mention',
-                    style: 1,
-                    min_length: 1,
-                    placeholder: 'Enter user ID or @mention',
-                    required: true
-                }]
-            }]
-        };
-
-        await interaction.showModal(modal);
-    }
-
-    private async handleEditUser(interaction: any) {
-        const users = await this.permissionsService.getAllUsers();
-        if (!users.length) {
-            await interaction.reply({ content: '❌ No users found in the database.', ephemeral: true });
-            return;
-        }
-
-        const row = this.createActionRow(
-            users.map(user => ({
-                customId: `edit_user_${user.id}`,
-                label: user.username || user.id,
-                style: 'PRIMARY',
-                emoji: '✏️'
-            }))
-        );
-
-        await interaction.reply({
-            content: '👥 Select a user to edit:',
-            components: [row as any],
-            ephemeral: true
-        });
-    }
-
-    private async handleRemoveUser(interaction: any) {
-        const users = await this.permissionsService.getAllUsers();
-        if (!users.length) {
-            await interaction.reply({ content: '❌ No users found in the database.', ephemeral: true });
-            return;
-        }
-
-        const row = this.createActionRow(
-            users.map(user => ({
-                customId: `remove_user_${user.id}`,
-                label: user.username || user.id,
-                style: 'DANGER',
-                emoji: '🗑️'
-            }))
-        );
-
-        await interaction.reply({
-            content: '🗑️ Select a user to remove:',
-            components: [row as any],
-            ephemeral: true
-        });
     }
 }

@@ -6,11 +6,11 @@ import { OpenAIService } from '../openai.service';
 import { GPTFeature } from './features/telegram-gpt.service';
 import { SelfDestructFeature } from './features/telegram-self-destruct.service';
 import { TLDRFeature } from './features/telegram-tldr.service';
-import { TelegramGameFeature } from './features/telegram-game.service';
+import { GameFeature } from './features/telegram-game.service';
 import { COMMANDS } from '../../config/constants';
 import { PermissionsService } from '../permissions/permissions.service';
+import { BotRBACService } from '../permissions/bot-rbac.service';
 import { Api } from 'telegram';
-import { TelegramRBACHandler } from './handlers/telegram-rbac.handler';
 import bigInt from 'big-integer';
 
 export class TelegramService {
@@ -19,9 +19,9 @@ export class TelegramService {
     private gptFeature: GPTFeature;
     private selfDestructFeature: SelfDestructFeature;
     private tldrFeature: TLDRFeature;
-    private gameFeature: TelegramGameFeature;
+    private gameFeature: GameFeature;
     private permissionsService: PermissionsService;
-    private rbacHandler: TelegramRBACHandler;
+    private rbacService: BotRBACService;
     private conversations: Map<string, any> = new Map();
 
     constructor() {
@@ -33,11 +33,11 @@ export class TelegramService {
         );
         this.openAIService = new OpenAIService();
         this.permissionsService = new PermissionsService();
-        this.rbacHandler = new TelegramRBACHandler(this.client, this.permissionsService);
+        this.rbacService = new BotRBACService(this.permissionsService);
         this.gptFeature = new GPTFeature(this.client, this.openAIService, this.conversations);
         this.selfDestructFeature = new SelfDestructFeature(this.client);
         this.tldrFeature = new TLDRFeature(this.client, this.openAIService);
-        this.gameFeature = new TelegramGameFeature(this.client);
+        this.gameFeature = new GameFeature(this.client);
     }
 
     private async sendMessage(message: any, text: string) {
@@ -68,7 +68,7 @@ export class TelegramService {
             if (!isCommand) return;
 
             // Check base bot permission for any command
-            if (!await this.rbacHandler.hasPermission(senderId, 'use_bot')) {
+            if (!await this.rbacService.hasPermission(senderId, 'use_bot')) {
                 await this.sendMessage(message, "⛔ You don't have permission to use this bot.");
                 return;
             }
@@ -81,44 +81,69 @@ export class TelegramService {
                 }
 
                 if (messageText === '!roles') {
-                    await this.rbacHandler.handleRolesCommand(message);
+                    const result = await this.rbacService.handleRolesCommand();
+                    await this.sendMessage(message, result.message);
                     return;
                 } else if (messageText.startsWith('!grant')) {
-                    await this.rbacHandler.handleGrantCommand(message);
+                    const args = messageText.split(' ').slice(1);
+                    if (args.length !== 2) {
+                        await this.sendMessage(message, '❌ Usage: !grant @username permission');
+                        return;
+                    }
+                    const result = await this.rbacService.handleGrantCommand(senderId, args[0], args[1]);
+                    await this.sendMessage(message, result.message);
                     return;
                 } else if (messageText.startsWith('!revoke')) {
-                    await this.rbacHandler.handleRevokeCommand(message);
+                    const args = messageText.split(' ').slice(1);
+                    if (args.length !== 2) {
+                        await this.sendMessage(message, '❌ Usage: !revoke @username permission');
+                        return;
+                    }
+                    const result = await this.rbacService.handleRevokeCommand(senderId, args[0], args[1]);
+                    await this.sendMessage(message, result.message);
                     return;
                 } else if (messageText.startsWith('!role ')) {
-                    await this.rbacHandler.handleRoleCommand(message);
+                    const args = messageText.split(' ').slice(1);
+                    if (args.length !== 2) {
+                        await this.sendMessage(message, '❌ Usage: !role @username rolename');
+                        return;
+                    }
+                    const result = await this.rbacService.handleRoleCommand(senderId, args[0], args[1]);
+                    await this.sendMessage(message, result.message);
                     return;
                 } else if (messageText.startsWith('!perms')) {
-                    await this.rbacHandler.handlePermsCommand(message);
+                    const args = messageText.split(' ').slice(1);
+                    if (args.length !== 1) {
+                        await this.sendMessage(message, '❌ Usage: !perms @username');
+                        return;
+                    }
+                    const result = await this.rbacService.handlePermsCommand(args[0]);
+                    await this.sendMessage(message, result.message);
                     return;
                 }
             }
 
             try {
                 if (messageText.startsWith(config.bot.triggerPrefix)) {
-                    if (await this.rbacHandler.hasPermission(senderId, 'use_gpt')) {
+                    if (await this.rbacService.hasPermission(senderId, 'use_gpt')) {
                         await this.gptFeature.handle(message);
                     } else {
                         await this.sendMessage(message, '⛔ You don\'t have permission to use GPT commands. Please contact the bot owner.');
                     }
                 } else if (messageText.startsWith(config.bot.selfDestructPrefix)) {
-                    if (await this.rbacHandler.hasPermission(senderId, 'use_bot')) {
+                    if (await this.rbacService.hasPermission(senderId, 'use_bot')) {
                         await this.selfDestructFeature.handle(message);
                     } else {
                         await this.sendMessage(message, '⛔ You don\'t have permission to use self-destruct messages. Please contact the bot owner.');
                     }
                 } else if (messageText.startsWith(config.bot.tldrPrefix)) {
-                    if (await this.rbacHandler.hasPermission(senderId, 'use_tldr')) {
+                    if (await this.rbacService.hasPermission(senderId, 'use_tldr')) {
                         await this.tldrFeature.handle(message);
                     } else {
                         await this.sendMessage(message, '⛔ You don\'t have permission to use TLDR commands. Please contact the bot owner.');
                     }
                 } else if (messageText.startsWith(COMMANDS.GAME)) {
-                    if (await this.rbacHandler.hasPermission(senderId, 'use_games')) {
+                    if (await this.rbacService.hasPermission(senderId, 'use_games')) {
                         await this.gameFeature.handle(event);
                     } else {
                         await this.sendMessage(message, '⛔ You don\'t have permission to use game commands. Please contact the bot owner.');
