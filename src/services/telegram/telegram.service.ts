@@ -75,7 +75,7 @@ export class TelegramService {
 
             // Only owner can use RBAC management commands (those starting with !)
             if (messageText.match(/^!(roles|grant|revoke|role|perms)\b/)) {
-                if (senderId !== config.telegram.ownerId) {
+                if (senderId !== config.telegram.ownerId?.toString()) {
                     await this.sendMessage(message, "⛔ Only the bot owner can use management commands.");
                     return;
                 }

@@ -37,18 +37,18 @@ async function startServices() {
         console.log('Skipping Telegram bot service - missing bot token');
     }
 
-    // Check Discord token or bot token
-    if (config.discord.token || config.discord.botToken) {
-        console.log('Starting Discord bot service...');
-        const discordService = new DiscordBotService();
-        services.push({
-            name: 'Discord Bot',
-            promise: discordService.start()
-        });
-        servicesStarted++;
-    } else {
-        console.log('Skipping Discord service - missing tokens');
-    }
+    // Check Discord token or bot token - TEMPORARILY DISABLED
+    // if (config.discord.token || config.discord.botToken) {
+    //     console.log('Starting Discord bot service...');
+    //     const discordService = new DiscordBotService();
+    //     services.push({
+    //         name: 'Discord Bot',
+    //         promise: discordService.start()
+    //     });
+    //     servicesStarted++;
+    // } else {
+        console.log('Discord service temporarily disabled');
+    // }
 
     if (servicesStarted === 0) {
         console.error('No services could be started - missing all credentials');

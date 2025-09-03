@@ -24,11 +24,12 @@ export class GPTFeature {
 
     async handle(message: any): Promise<void> {
         const messageText = message.text;
-        const chatId = message.chat.id.toString();
+        // Handle both Telegraf message structure and direct message structure
+        const chatId = message.chat?.id?.toString() || message.chatId?.toString() || message.peerId?.toString();
 
         if (!chatId) return;
 
-        const messageId = `${chatId}_${message.message_id}`;
+        const messageId = `${chatId}_${message.message_id || message.id || Date.now()}`;
         if (this.processingMessages.has(messageId)) {
             return;
         }
@@ -42,7 +43,10 @@ export class GPTFeature {
         }
 
         try {
-            const thinkingMessage = await this.client.telegram.sendMessage(chatId, '🤔 Thinking...');
+            // Handle both Telegraf bot and Telegram client
+            const thinkingMessage = this.client.telegram 
+                ? await this.client.telegram.sendMessage(chatId, '🤔 Thinking...')
+                : await this.client.sendMessage(chatId, { message: '🤔 Thinking...' });
 
             if (!thinkingMessage) {
                 throw new Error('Failed to send thinking message');
@@ -68,36 +72,56 @@ export class GPTFeature {
 
             const formattedResponse = this.formatResponse(input, response, conversation.messages.length);
             
-            await this.client.telegram.editMessageText(
-                chatId,
-                thinkingMessage.message_id,
-                undefined,
-                formattedResponse,
-                { parse_mode: config.bot.enableMarkdown ? 'Markdown' : undefined }
-            );
+            // Handle both Telegraf bot and Telegram client for editing
+            if (this.client.telegram) {
+                await this.client.telegram.editMessageText(
+                    chatId,
+                    thinkingMessage.message_id,
+                    undefined,
+                    formattedResponse,
+                    { parse_mode: config.bot.enableMarkdown ? 'Markdown' : undefined }
+                );
+            } else {
+                await this.client.editMessage(chatId, {
+                    message: thinkingMessage.id,
+                    text: formattedResponse,
+                });
+            }
 
         } catch (error) {
             console.error('Error handling message:', error);
-            await this.client.telegram.sendMessage(chatId, '❌ Sorry, there was an error processing your request.');
+            // Handle both Telegraf bot and Telegram client for error messages
+            if (this.client.telegram) {
+                await this.client.telegram.sendMessage(chatId, '❌ Sorry, there was an error processing your request.');
+            } else {
+                await this.client.sendMessage(chatId, { message: '❌ Sorry, there was an error processing your request.' });
+            }
         } finally {
             this.processingMessages.delete(messageId);
         }
     }
 
-    private async handleCommands(message: Message, command: string): Promise<boolean> {
-        const chatId = message.chat.id.toString();
+    private async handleCommands(message: any, command: string): Promise<boolean> {
+        // Handle both Telegraf message structure and direct message structure
+        const chatId = message.chat?.id?.toString() || message.chatId?.toString() || message.peerId?.toString();
+        
+        if (!chatId) return false;
         
         switch (command.toLowerCase()) {
             case 'clear':
                 this.conversations.delete(chatId);
-                await this.client.telegram.sendMessage(chatId, '🧹 Conversation history cleared!', {
-                    parse_mode: config.bot.enableMarkdown ? 'Markdown' : undefined
-                });
+                // Handle both Telegraf bot and Telegram client
+                if (this.client.telegram) {
+                    await this.client.telegram.sendMessage(chatId, '🧹 Conversation history cleared!', {
+                        parse_mode: config.bot.enableMarkdown ? 'Markdown' : undefined
+                    });
+                } else {
+                    await this.client.sendMessage(chatId, { message: '🧹 Conversation history cleared!' });
+                }
                 return true;
 
             case 'help':
-                await this.client.telegram.sendMessage(chatId, 
-                    `🤖 **GPT-4 Assistant Help**
+                const helpMessage = `🤖 **GPT-4 Assistant Help**
 ───────────────
 Available commands:
 • ${config.bot.triggerPrefix} [question] - Ask GPT-4 a question
@@ -109,9 +133,16 @@ Features:
 • Code formatting
 • Markdown support
 • Message threading
-───────────────`,
-                    { parse_mode: config.bot.enableMarkdown ? 'Markdown' : undefined }
-                );
+───────────────`;
+                
+                // Handle both Telegraf bot and Telegram client
+                if (this.client.telegram) {
+                    await this.client.telegram.sendMessage(chatId, helpMessage, {
+                        parse_mode: config.bot.enableMarkdown ? 'Markdown' : undefined
+                    });
+                } else {
+                    await this.client.sendMessage(chatId, { message: helpMessage });
+                }
                 return true;
 
             default:
