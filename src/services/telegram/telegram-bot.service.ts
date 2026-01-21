@@ -7,8 +7,7 @@ import { GPTFeature } from './features/telegram-gpt.service';
 import { TLDRFeature } from './features/telegram-tldr.service';
 import { SelfDestructFeature } from './features/telegram-self-destruct.service';
 import { GameFeature } from './features/telegram-game.service';
-import { TelegramClient } from '@gram-js/client';
-import { Api } from '@gram-js/client';
+import { TelegramClient, Api } from 'telegram';
 
 type BotContext = Context<Update>;
 type TextMessage = Message.TextMessage;
@@ -46,10 +45,11 @@ export class TelegramBotService extends BaseBotService {
         }
 
         // Initialize features
-        this.gptFeature = new GPTFeature(openAIService);
-        this.tldrFeature = new TLDRFeature(openAIService);
-        this.selfDestructFeature = new SelfDestructFeature();
-        this.gameFeature = new GameFeature();
+        const client = this.mode === 'bot' ? this.bot : this.selfClient;
+        this.gptFeature = new GPTFeature(client, openAIService, this.conversations);
+        this.tldrFeature = new TLDRFeature(client, openAIService);
+        this.selfDestructFeature = new SelfDestructFeature(client);
+        this.gameFeature = new GameFeature(client);
     }
 
     private setupBotHandlers() {

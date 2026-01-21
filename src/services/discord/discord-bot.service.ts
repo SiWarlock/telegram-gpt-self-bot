@@ -1,4 +1,4 @@
-import { Client as BotClient, Message as BotMessage, MessageEmbed as BotEmbed, MessageActionRow as BotActionRow, MessageButton as BotButton, Intents, ClientOptions as BotOptions, GatewayIntentBits } from 'discord.js';
+import { Client as BotClient, Message as BotMessage, MessageEmbed as BotEmbed, MessageActionRow as BotActionRow, MessageButton as BotButton, Intents, ClientOptions as BotOptions, MessageEmbed, MessageActionRow, MessageButton } from 'discord.js';
 import { Client as SelfClient, Message as SelfMessage, MessageEmbed as SelfEmbed, MessageActionRow as SelfActionRow, MessageButton as SelfButton, ClientOptions as SelfOptions } from 'discord.js-selfbot-v13';
 import { config } from '../../config/config';
 import { BaseBotService, IBotMessage, IBotResponse } from '../bot/base-bot.service';
@@ -7,7 +7,6 @@ import { DiscordGPTFeature } from './features/discord-gpt.service';
 import { DiscordTLDRFeature } from './features/discord-tldr.service';
 import { DiscordSelfDestructFeature } from './features/discord-self-destruct.service';
 import { DiscordGameFeature } from './features/discord-game.service';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from '@discordjs/builders';
 
 type AnyClient = BotClient | SelfClient;
 type AnyMessage = BotMessage | SelfMessage;
@@ -60,10 +59,11 @@ export class DiscordBotService extends BaseBotService {
             throw new Error('No Discord client initialized');
         }
 
-        this.gptFeature = new DiscordGPTFeature(client, openAIService, this.conversations);
-        this.tldrFeature = new DiscordTLDRFeature(client, openAIService);
-        this.selfDestructFeature = new DiscordSelfDestructFeature(client);
-        this.gameFeature = new DiscordGameFeature(client);
+        // Cast to any to avoid type conflicts between discord.js and selfbot-v13
+        this.gptFeature = new DiscordGPTFeature(client as any, openAIService, this.conversations);
+        this.tldrFeature = new DiscordTLDRFeature(client as any, openAIService);
+        this.selfDestructFeature = new DiscordSelfDestructFeature(client as any);
+        this.gameFeature = new DiscordGameFeature(client as any);
     }
 
     private setupBotHandlers() {
@@ -105,7 +105,7 @@ export class DiscordBotService extends BaseBotService {
             username: message.author.username
         };
 
-        await this.processMessage(botMessage);
+        await this.processMessage(botMessage, message);
     }
 
     private async handleSelfBotMessage(message: SelfMessage) {
@@ -122,10 +122,10 @@ export class DiscordBotService extends BaseBotService {
             username: message.author.username
         };
 
-        await this.processMessage(botMessage);
+        await this.processMessage(botMessage, message);
     }
 
-    private async processMessage(message: IBotMessage) {
+    private async processMessage(message: IBotMessage, originalMessage: AnyMessage) {
         if (message.content.startsWith('!') || message.content.startsWith('/')) {
             const command = message.content.slice(1).split(' ')[0].toLowerCase();
 
@@ -138,27 +138,27 @@ export class DiscordBotService extends BaseBotService {
 
             // Feature commands - owner bypass or permission check
             if (this.isOwner(message.senderId) || await this.checkPermission(message.senderId, 'use_bot')) {
-                await this.handleFeatureCommand(command, message);
+                await this.handleFeatureCommand(command, message, originalMessage);
             } else {
                 await this.sendMessage(message.chatId, { content: "⛔ You don't have permission to use this bot" });
             }
         }
     }
 
-    private async handleFeatureCommand(command: string, message: IBotMessage) {
+    private async handleFeatureCommand(command: string, message: IBotMessage, originalMessage: AnyMessage) {
         try {
             switch (command) {
                 case 'gpt':
-                    await this.gptFeature.handle(message);
+                    await this.gptFeature.handle(originalMessage as any);
                     break;
                 case 'tldr':
-                    await this.tldrFeature.handle(message);
+                    await this.tldrFeature.handle(originalMessage as any);
                     break;
                 case 'sd':
-                    await this.selfDestructFeature.handle(message);
+                    await this.selfDestructFeature.handle(originalMessage as any);
                     break;
                 case 'game':
-                    await this.gameFeature.handle(message);
+                    await this.gameFeature.handle(originalMessage as any);
                     break;
                 default:
                     await this.sendMessage(message.chatId, { content: '❌ Unknown command' });
@@ -230,25 +230,25 @@ export class DiscordBotService extends BaseBotService {
                 return;
             }
 
-            const embed = new EmbedBuilder()
+            const embed = new MessageEmbed()
                 .setTitle('🎮 Bot Admin Dashboard')
                 .setDescription('Welcome to your bot management dashboard. Use the buttons below to manage your bot.')
                 .setColor('#0099ff');
 
-            const row = new ActionRowBuilder<ButtonBuilder>()
+            const row = new MessageActionRow()
                 .addComponents(
-                    new ButtonBuilder()
+                    new MessageButton()
                         .setCustomId('view_users')
                         .setLabel('View Users')
-                        .setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder()
+                        .setStyle('PRIMARY'),
+                    new MessageButton()
                         .setCustomId('view_roles')
                         .setLabel('View Roles')
-                        .setStyle(ButtonStyle.Success),
-                    new ButtonBuilder()
+                        .setStyle('SUCCESS'),
+                    new MessageButton()
                         .setCustomId('view_permissions')
                         .setLabel('View Permissions')
-                        .setStyle(ButtonStyle.Secondary)
+                        .setStyle('SECONDARY')
                 );
 
             await owner.send({ embeds: [embed], components: [row] });
