@@ -7,236 +7,212 @@ import { GPTFeature } from './features/telegram-gpt.service';
 import { TLDRFeature } from './features/telegram-tldr.service';
 import { SelfDestructFeature } from './features/telegram-self-destruct.service';
 import { GameFeature } from './features/telegram-game.service';
+import { TelegramClient } from '@gram-js/client';
+import { Api } from '@gram-js/client';
 
 type BotContext = Context<Update>;
 type TextMessage = Message.TextMessage;
 
 export class TelegramBotService extends BaseBotService {
-    private bot: Telegraf<BotContext>;
-    private openAIService: OpenAIService;
+    private bot: any;
+    private selfClient: any;
+    private mode: 'bot' | 'self';
     private gptFeature: GPTFeature;
     private tldrFeature: TLDRFeature;
     private selfDestructFeature: SelfDestructFeature;
     private gameFeature: GameFeature;
     private conversations: Map<string, any> = new Map();
 
-    constructor() {
-        // Convert owner ID to string and ensure it's not undefined
-        const ownerId = config.telegram.ownerId?.toString();
-        if (!ownerId) {
-            throw new Error('TELEGRAM_OWNER_ID is not configured');
-        }
-        console.log('Creating TelegramBotService with owner ID:', ownerId);
-        super(ownerId);
+    constructor(config: any, openAIService: OpenAIService) {
+        super(config.telegram.ownerId);
+        this.mode = config.telegram.mode;
+        console.log('Initializing TelegramBotService with mode:', this.mode, 'ownerId:', this.ownerId);
 
-        if (!config.telegram.botToken) {
-            throw new Error('TELEGRAM_BOT_TOKEN is not configured');
+        if (this.mode === 'bot') {
+            this.bot = new Telegraf(config.telegram.botToken);
+            this.setupBotHandlers();
+        } else {
+            const apiId = parseInt(config.telegram.apiId);
+            if (isNaN(apiId)) {
+                throw new Error('Invalid API ID');
+            }
+            this.selfClient = new TelegramClient(
+                config.telegram.session,
+                apiId,
+                config.telegram.apiHash,
+                { connectionRetries: 5 }
+            );
+            this.setupSelfBotHandlers();
         }
 
-        this.bot = new Telegraf<BotContext>(config.telegram.botToken);
-        this.openAIService = new OpenAIService();
-        
         // Initialize features
-        this.gptFeature = new GPTFeature(this.bot, this.openAIService, this.conversations);
-        this.tldrFeature = new TLDRFeature(this.bot, this.openAIService);
-        this.selfDestructFeature = new SelfDestructFeature(this.bot);
-        this.gameFeature = new GameFeature(this.bot);
-
-        this.setupCommands();
-        
-        // Verify owner ID was set correctly
-        console.log('Initialized TelegramBotService with owner ID:', this.ownerId);
+        this.gptFeature = new GPTFeature(openAIService);
+        this.tldrFeature = new TLDRFeature(openAIService);
+        this.selfDestructFeature = new SelfDestructFeature();
+        this.gameFeature = new GameFeature();
     }
 
-    protected async resolveUserId(userIdentifier: string): Promise<string | null> {
-        const username = userIdentifier.replace('@', '');
-        try {
-            // First get user info from username
-            const users = await this.bot.telegram.getChat(username);
-            if (!users || !users.id) return null;
+    private setupBotHandlers() {
+        // Start command
+        this.bot.command('start', async (ctx: any) => {
+            await ctx.reply('👋 Hello! I am your AI assistant. Use /help to see available commands.');
+        });
 
-            // Then get chat member using numeric ID
-            const chatMember = await this.bot.telegram.getChatMember(parseInt(this.ownerId) || 0, users.id);
-            return chatMember.user.id.toString();
-        } catch {
+        // Handle text messages for bot mode
+        this.bot.on('text', async (ctx: any) => {
+            const message = {
+                senderId: ctx.from.id.toString(),
+                chatId: ctx.chat.id.toString(),
+                content: ctx.message.text,
+                username: ctx.from.username || '',
+            };
+
+            await this.handleBotMessage(message);
+        });
+    }
+
+    private setupSelfBotHandlers() {
+        this.selfClient.addEventHandler(async (event: any) => {
+            if (event._eventName !== 'message') return;
+
+            const message = {
+                senderId: event.message.senderId?.toString() || '',
+                chatId: event.message.chatId.toString(),
+                content: event.message.message || '',
+                username: event.message.sender?.username || '',
+            };
+
+            await this.handleSelfBotMessage(message);
+        });
+    }
+
+    private async handleBotMessage(message: IBotMessage) {
+        console.log('Bot mode - Processing message:', message);
+
+        // Check if it's a command
+        if (message.content.startsWith('!') || message.content.startsWith('/')) {
+            const command = message.content.slice(1).split(' ')[0].toLowerCase();
+
+            // RBAC commands
+            if (['roles', 'grant', 'revoke', 'role', 'perms'].includes(command)) {
+                const response = await this.handleRBACCommand(command, message);
+                await this.sendMessage(message.chatId, response);
+                return;
+            }
+
+            // Feature commands
+            if (!await this.checkPermission(message.senderId, 'use_bot')) {
+                await this.sendMessage(message.chatId, { content: "⛔ You don't have permission to use this bot" });
+                return;
+            }
+
+            // Handle other commands
+            await this.handleFeatureCommand(command, message);
+        }
+    }
+
+    private async handleSelfBotMessage(message: IBotMessage) {
+        console.log('Self-bot mode - Processing message:', message);
+
+        // Only process messages from the owner in self-bot mode
+        if (!this.isOwner(message.senderId)) {
+            console.log('Ignoring message from non-owner in self-bot mode');
+            return;
+        }
+
+        if (message.content.startsWith('!') || message.content.startsWith('/')) {
+            const command = message.content.slice(1).split(' ')[0].toLowerCase();
+            
+            // Handle commands without permission checks in self-bot mode
+            if (['roles', 'grant', 'revoke', 'role', 'perms'].includes(command)) {
+                const response = await this.handleRBACCommand(command, message);
+                await this.sendMessage(message.chatId, response);
+                return;
+            }
+
+            await this.handleFeatureCommand(command, message);
+        }
+    }
+
+    private async handleFeatureCommand(command: string, message: IBotMessage) {
+        try {
+            switch (command) {
+                case 'gpt':
+                    await this.gptFeature.handle(message);
+                    break;
+                case 'tldr':
+                    await this.tldrFeature.handle(message);
+                    break;
+                case 'sd':
+                    await this.selfDestructFeature.handle(message);
+                    break;
+                case 'game':
+                    await this.gameFeature.handle({
+                        message,
+                        _eventName: 'message',
+                        _client: this.mode === 'bot' ? this.bot : this.selfClient,
+                        originalUpdate: message
+                    });
+                    break;
+                default:
+                    await this.sendMessage(message.chatId, { content: '❌ Unknown command' });
+            }
+        } catch (error) {
+            console.error('Error handling feature command:', error);
+            await this.sendMessage(message.chatId, { content: '❌ An error occurred while processing your command' });
+        }
+    }
+
+    protected async resolveUserId(username: string): Promise<string | null> {
+        try {
+            if (this.mode === 'bot') {
+                const chat = await this.bot.telegram.getChat(username);
+                return chat?.id?.toString() || null;
+            } else {
+                const result = await this.selfClient.invoke(new Api.users.GetUsers({
+                    id: [username]
+                }));
+                return result[0]?.id?.toString() || null;
+            }
+        } catch (error) {
+            console.error('Error resolving user ID:', error);
             return null;
         }
     }
 
     protected async sendMessage(chatId: string, response: IBotResponse): Promise<void> {
         try {
-            const numericChatId = parseInt(chatId) || 0;
-            if (response.silent) {
-                await this.bot.telegram.sendMessage(numericChatId, response.content, {
-                    parse_mode: 'MarkdownV2'
-                });
+            const numericChatId = parseInt(chatId);
+            if (isNaN(numericChatId)) {
+                console.error('Invalid chat ID:', chatId);
+                return;
+            }
+
+            if (this.mode === 'bot') {
+                await this.bot.telegram.sendMessage(numericChatId, response.content);
             } else {
-                await this.bot.telegram.sendMessage(numericChatId, response.content, {
-                    parse_mode: 'MarkdownV2'
-                });
+                await this.selfClient.sendMessage(numericChatId, { message: response.content });
             }
         } catch (error) {
             console.error('Error sending message:', error);
         }
     }
 
-    private setupCommands(): void {
-        // Start command - initial greeting and auth check
-        this.bot.command('start', async (ctx) => {
-            const userId = ctx.from?.id.toString();
-            if (!userId) return;
-
-            if (userId === this.ownerId) {
-                await ctx.reply(
-                    '🔐 *Welcome back, owner\\!*\n\n' +
-                    '📋 *Available Commands:*\n' +
-                    '• /dashboard \\- Open the main dashboard\n' +
-                    '• /users \\- Manage user permissions\n' +
-                    '• /roles \\- Configure roles\n' +
-                    '• /settings \\- Bot settings',
-                    {
-                        parse_mode: 'MarkdownV2',
-                        reply_markup: {
-                            inline_keyboard: [
-                                [{ text: '📊 Dashboard', callback_data: 'dashboard' }],
-                                [{ text: '👥 Users', callback_data: 'users' }, { text: '👑 Roles', callback_data: 'roles' }],
-                                [{ text: '⚙️ Settings', callback_data: 'settings' }]
-                            ]
-                        }
-                    }
-                );
-            } else {
-                const roles = await this.permissionsService.getUserRoles(userId);
-                if (roles.length > 0) {
-                    const permissions = await this.permissionsService.getUserPermissions(userId);
-                    await ctx.reply(
-                        '👋 *Welcome\\!* Here are your current permissions:\n\n' +
-                        `🎭 *Roles:* ${roles.map(r => `\`${r}\``).join(', ')}\n` +
-                        `📋 *Permissions:* ${permissions.map(p => `\`${p}\``).join(', ')}`,
-                        { parse_mode: 'MarkdownV2' }
-                    );
-                } else {
-                    await ctx.reply('⚠️ You don\'t have any roles or permissions yet. Please contact the bot owner.');
-                }
-            }
-        });
-
-        // Handle message commands
-        this.bot.on('text', async (ctx) => {
-            const message = ctx.message;
-            const userId = ctx.from?.id.toString();
-            const chatId = ctx.chat?.id.toString();
-
-            if (!message || !userId || !chatId) return;
-
-            // Debug log for owner ID comparison
-            console.log('Message from user ID:', userId);
-            console.log('Owner ID:', this.ownerId);
-            console.log('Is owner?', userId === this.ownerId);
-
-            // Convert to common message format
-            const botMessage: IBotMessage = {
-                content: message.text,
-                senderId: userId,
-                chatId: chatId,
-                username: ctx.from?.username || ''
-            };
-
-            // Owner always has all permissions
-            if (userId === this.ownerId) {
-                console.log('Processing owner command');
-                // Handle RBAC commands
-                if (message.text.match(/^!(roles|grant|revoke|role|perms)\b/)) {
-                    const command = message.text.split(' ')[0].substring(1);
-                    const response = await this.handleRBACCommand(command, botMessage);
-                    await this.sendMessage(chatId, response);
-                    return;
-                }
-
-                // Handle feature commands for owner
-                try {
-                    if (message.text.startsWith(config.bot.triggerPrefix)) {
-                        await this.gptFeature.handle(message);
-                    } else if (message.text.startsWith(config.bot.selfDestructPrefix)) {
-                        await this.selfDestructFeature.handle(message);
-                    } else if (message.text.startsWith(config.bot.tldrPrefix)) {
-                        await this.tldrFeature.handle(message);
-                    } else if (message.text.startsWith('!game')) {
-                        await this.gameFeature.handle(message);
-                    }
-                } catch (error) {
-                    console.error('Error handling owner message:', error);
-                    await this.sendMessage(chatId, {
-                        content: '❌ An error occurred while processing your request.'
-                    });
-                }
-                return;
-            }
-
-            // Non-owner command handling
-            try {
-                if (message.text.match(/^!(roles|grant|revoke|role|perms)\b/)) {
-                    if (!await this.checkPermission(userId, 'manage_roles')) {
-                        await this.sendMessage(chatId, {
-                            content: "⛔ You don't have permission to manage roles."
-                        });
-                        return;
-                    }
-                    const command = message.text.split(' ')[0].substring(1);
-                    const response = await this.handleRBACCommand(command, botMessage);
-                    await this.sendMessage(chatId, response);
-                    return;
-                }
-
-                if (!await this.checkPermission(userId, 'use_bot')) {
-                    await this.sendMessage(chatId, {
-                        content: "⛔ You don't have permission to use this bot."
-                    });
-                    return;
-                }
-
-                if (message.text.startsWith(config.bot.triggerPrefix)) {
-                    if (await this.checkPermission(userId, 'use_gpt')) {
-                        await this.gptFeature.handle(message);
-                    }
-                } else if (message.text.startsWith(config.bot.selfDestructPrefix)) {
-                    if (await this.checkPermission(userId, 'use_bot')) {
-                        await this.selfDestructFeature.handle(message);
-                    }
-                } else if (message.text.startsWith(config.bot.tldrPrefix)) {
-                    if (await this.checkPermission(userId, 'use_tldr')) {
-                        await this.tldrFeature.handle(message);
-                    }
-                } else if (message.text.startsWith('!game')) {
-                    if (await this.checkPermission(userId, 'use_games')) {
-                        await this.gameFeature.handle(message);
-                    }
-                }
-            } catch (error) {
-                console.error('Error handling message:', error);
-                await this.sendMessage(chatId, {
-                    content: '❌ An error occurred while processing your request.'
-                });
-            }
-        });
-
-        // Error handling
-        this.bot.catch((err: any) => {
-            console.error('Bot error:', err);
-        });
+    public async start(): Promise<void> {
+        if (this.mode === 'bot') {
+            await this.bot.launch();
+            console.log('Telegram bot started');
+        } else {
+            await this.selfClient.connect();
+            console.log('Telegram self-bot connected');
+        }
     }
 
-    public async start(): Promise<void> {
-        try {
-            await this.bot.launch();
-            console.log('Telegram bot started successfully');
-
-            // Enable graceful stop
-            process.once('SIGINT', () => this.bot.stop('SIGINT'));
-            process.once('SIGTERM', () => this.bot.stop('SIGTERM'));
-        } catch (error) {
-            console.error('Failed to start Telegram bot:', error);
-            throw error;
+    public async stop(): Promise<void> {
+        if (this.mode === 'bot') {
+            await this.bot.stop();
+        } else {
+            await this.selfClient.disconnect();
         }
     }
 } 

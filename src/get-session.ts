@@ -1,18 +1,22 @@
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
 import { config } from './config/config';
-
+console.log(config.telegram.apiId);
+console.log(config.telegram.apiHash);
 async function getSession() {
     const client = new TelegramClient(
         new StringSession(''),
         config.telegram.apiId ?? 0,
         config.telegram.apiHash ?? '',
-        { connectionRetries: 5 }
+        { 
+            connectionRetries: 5,
+            useWSS: true
+        }
     );
 
     await client.start({
         phoneNumber: async () => await input('Please enter your phone number: '),
-        password: async () => await input('Please enter your password: '),
+        password: async () => await input('Please enter your 2FA password: '),
         phoneCode: async () => await input('Please enter the code you received: '),
         onError: (err) => console.log(err),
     });

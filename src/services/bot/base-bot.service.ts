@@ -14,19 +14,25 @@ export interface IBotResponse {
 }
 
 export abstract class BaseBotService {
-    protected rbacService: BotRBACService;
     protected permissionsService: PermissionsService;
     protected ownerId: string;
 
     constructor(ownerId: string) {
+        if (!ownerId) {
+            throw new Error('Owner ID must be provided');
+        }
         this.ownerId = ownerId;
         this.permissionsService = PermissionsService.getInstance();
-        this.rbacService = new BotRBACService(this.permissionsService);
+    }
+
+    protected isOwner(userId: string): boolean {
+        console.log('Checking if owner:', { userId, ownerId: this.ownerId, isMatch: userId === this.ownerId });
+        return userId === this.ownerId;
     }
 
     protected async checkPermission(userId: string, permission: string): Promise<boolean> {
         // Owner always has all permissions
-        if (userId === this.ownerId) {
+        if (this.isOwner(userId)) {
             return true;
         }
         return await this.permissionsService.hasPermission(userId, permission);
@@ -34,7 +40,7 @@ export abstract class BaseBotService {
 
     protected async handleRBACCommand(command: string, message: IBotMessage): Promise<IBotResponse> {
         // Only owner can use RBAC management commands
-        if (message.senderId !== this.ownerId) {
+        if (!this.isOwner(message.senderId)) {
             return {
                 content: "⛔ Only the bot owner can use management commands."
             };
@@ -70,55 +76,84 @@ export abstract class BaseBotService {
         }
     }
 
-    private async handleRolesCommand(): Promise<IBotResponse> {
-        const result = await this.rbacService.handleRolesCommand();
-        return { content: result.message };
+    protected async handleRolesCommand(): Promise<IBotResponse> {
+        const roles = this.permissionsService.getDefaultRoles();
+        let response = '👑 Available Roles:\n\n';
+        for (const [role, permissions] of Object.entries(roles)) {
+            response += `${role}:\n📋 ${permissions.join(', ')}\n\n`;
+        }
+        return { content: response };
     }
 
-    private async handleGrantCommand(userId: string, targetUser: string, permission: string): Promise<IBotResponse> {
-        const targetUserId = await this.resolveUserId(targetUser);
-        if (!targetUserId) {
-            return { content: '❌ User not found' };
+    protected async handleGrantCommand(senderId: string, targetUser: string, permission: string): Promise<IBotResponse> {
+        const userId = await this.resolveUserId(targetUser);
+        if (!userId) {
+            return { content: "❌ Could not find that user." };
         }
 
-        const result = await this.rbacService.handleGrantCommand(userId, targetUserId, permission);
-        return { content: result.message };
+        const success = await this.permissionsService.grantPermission(userId, permission);
+        return {
+            content: success 
+                ? `✅ Successfully granted ${permission} to <@${userId}>`
+                : "❌ Failed to grant permission."
+        };
     }
 
-    private async handleRevokeCommand(userId: string, targetUser: string, permission: string): Promise<IBotResponse> {
-        const targetUserId = await this.resolveUserId(targetUser);
-        if (!targetUserId) {
-            return { content: '❌ User not found' };
+    protected async handleRevokeCommand(senderId: string, targetUser: string, permission: string): Promise<IBotResponse> {
+        const userId = await this.resolveUserId(targetUser);
+        if (!userId) {
+            return { content: "❌ Could not find that user." };
         }
 
-        const result = await this.rbacService.handleRevokeCommand(userId, targetUserId, permission);
-        return { content: result.message };
+        const success = await this.permissionsService.revokePermission(userId, permission);
+        return {
+            content: success 
+                ? `✅ Successfully revoked ${permission} from <@${userId}>`
+                : "❌ Failed to revoke permission."
+        };
     }
 
-    private async handleRoleCommand(userId: string, targetUser: string, role: string): Promise<IBotResponse> {
-        const targetUserId = await this.resolveUserId(targetUser);
-        if (!targetUserId) {
-            return { content: '❌ User not found' };
+    protected async handleRoleCommand(senderId: string, targetUser: string, roleName: string): Promise<IBotResponse> {
+        const userId = await this.resolveUserId(targetUser);
+        if (!userId) {
+            return { content: "❌ Could not find that user." };
         }
 
-        const result = await this.rbacService.handleRoleCommand(userId, targetUserId, role);
-        return { content: result.message };
-    }
-
-    private async handlePermsCommand(targetUser: string): Promise<IBotResponse> {
-        const targetUserId = await this.resolveUserId(targetUser);
-        if (!targetUserId) {
-            return { content: '❌ User not found' };
+        const validRoles = Object.keys(this.permissionsService.getDefaultRoles());
+        if (!validRoles.includes(roleName)) {
+            return { content: `❌ Invalid role. Valid roles are: ${validRoles.join(', ')}` };
         }
 
-        const result = await this.rbacService.handlePermsCommand(targetUserId);
-        return { content: result.message };
+        // Remove existing roles first
+        for (const role of validRoles) {
+            await this.permissionsService.removeRole(userId, role);
+        }
+
+        const success = await this.permissionsService.assignRole(userId, roleName);
+        return {
+            content: success 
+                ? `✅ Successfully assigned role ${roleName} to <@${userId}>`
+                : "❌ Failed to assign role."
+        };
     }
 
-    // This method should be implemented by platform-specific bot services
+    protected async handlePermsCommand(targetUser: string): Promise<IBotResponse> {
+        const userId = await this.resolveUserId(targetUser);
+        if (!userId) {
+            return { content: "❌ Could not find that user." };
+        }
+
+        const roles = await this.permissionsService.getUserRoles(userId);
+        const permissions = await this.permissionsService.getUserPermissions(userId);
+
+        return {
+            content: `👤 User Permissions for <@${userId}>:\n` +
+                    `Roles: ${roles.join(', ') || 'None'}\n` +
+                    `Permissions: ${permissions.join(', ') || 'None'}`
+        };
+    }
+
     protected abstract resolveUserId(userIdentifier: string): Promise<string | null>;
-
-    // This method should be implemented by platform-specific bot services
     protected abstract sendMessage(chatId: string, response: IBotResponse): Promise<void>;
 
     // This method should be implemented by platform-specific bot services
