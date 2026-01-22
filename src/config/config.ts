@@ -15,7 +15,7 @@ export const config = {
         apiHash: process.env.API_HASH,
         sessionString: process.env.SESSION_STRING,
         botToken: process.env.TELEGRAM_BOT_TOKEN,
-        ownerId: process.env.TELEGRAM_OWNER_ID ? parseInt(process.env.TELEGRAM_OWNER_ID) : undefined,
+        ownerId: process.env.TELEGRAM_OWNER_ID,
         mode: (process.env.TELEGRAM_MODE || 'self') as 'bot' | 'self'
     },
     discord: {
