@@ -8,6 +8,7 @@ import { TLDRFeature } from './features/telegram-tldr.service';
 import { SelfDestructFeature } from './features/telegram-self-destruct.service';
 import { GameFeature } from './features/telegram-game.service';
 import { TelegramClient, Api } from 'telegram';
+import { StringSession } from 'telegram/sessions';
 
 type BotContext = Context<Update>;
 type TextMessage = Message.TextMessage;
@@ -36,7 +37,7 @@ export class TelegramBotService extends BaseBotService {
                 throw new Error('Invalid API ID');
             }
             this.selfClient = new TelegramClient(
-                config.telegram.session,
+                new StringSession(config.telegram.sessionString),
                 apiId,
                 config.telegram.apiHash,
                 { connectionRetries: 5 }
@@ -101,7 +102,8 @@ export class TelegramBotService extends BaseBotService {
             }
 
             // Feature commands
-            if (!await this.checkPermission(message.senderId, 'use_bot')) {
+            // Allow owner to bypass permission checks
+            if (!this.isOwner(message.senderId) && !await this.checkPermission(message.senderId, 'use_bot')) {
                 await this.sendMessage(message.chatId, { content: "⛔ You don't have permission to use this bot" });
                 return;
             }
