@@ -25,9 +25,7 @@ export class XAIService {
 
         try {
             const { text, sources } = await generateText({
-                model: xai.responses(this.model, {
-                    apiKey: config.xai.apiKey
-                }),
+                model: xai.responses(this.model),
                 prompt: `You are an expert crypto analyst with real-time access to X (Twitter) search.
 
 TASK: Analyze the following crypto query using LIVE X search data.
@@ -80,9 +78,7 @@ Query: ${query}`,
 
         try {
             const { text } = await generateText({
-                model: xai.responses(this.model, {
-                    apiKey: config.xai.apiKey
-                }),
+                model: xai.responses(this.model),
                 prompt: `You are Grok, a rebellious and witty AI assistant. ${prompt}`,
                 temperature: 0.9,
             });
