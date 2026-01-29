@@ -78,6 +78,8 @@ Display the "Sentiment Score" (0-100) and "Volume Trend" if discernible.`
                 tool_choice: 'auto'
             });
 
+            console.log('[XAIService] Raw completion response:', JSON.stringify(completion, null, 2));
+
             return completion.choices[0]?.message?.content || 'No response from Grok.';
         } catch (error: any) {
             console.error('Error calling Grok API:', {

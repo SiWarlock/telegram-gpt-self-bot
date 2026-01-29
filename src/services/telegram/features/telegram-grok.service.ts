@@ -55,35 +55,23 @@ Examples:
             const thinkingMsg = await this.sendMessage(chatId, '👁️ Grok is thinking...', message.originalMessage);
 
             // Analyze vs Chat logic
+            // Analyze vs Chat logic
             const cryptoKeywords = ['sentiment', 'ca:', '$', 'token', 'scan', 'analyze', 'audit', 'check', 'price', 'volume'];
             const isCryptoQuery = cryptoKeywords.some(k => query.toLowerCase().includes(k));
 
-            let response: string;
             if (isCryptoQuery) {
                 await this.editMessage(chatId, thinkingMsg, '👁️ Grok is scanning X (Twitter)...');
-                response = await this.xaiService.analyzeCrypto(query);
-            } else {
-                response = await this.xaiService.chat(query);
-            }
+                const response = await this.xaiService.analyzeCrypto(query);
+                console.log('[Grok] Analysis response length:', response.length);
+                
+                const formattedResponse = this.formatResponse(query, response);
 
-            const formattedResponse = this.formatResponse(query, response);
-
-            // Edit message with response
-            if (this.client.telegram) {
-                // Telegraf
-                await this.client.telegram.editMessageText(
-                    chatId,
-                    thinkingMsg.message_id,
-                    undefined,
-                    formattedResponse,
-                    { parse_mode: 'Markdown' }
-                );
+                // Edit message with response
+                await this.editMessage(chatId, thinkingMsg, formattedResponse);
             } else {
-                // GramJS / SelfClient
-                await this.client.editMessage(chatId, {
-                    message: thinkingMsg.id,
-                    text: formattedResponse,
-                });
+                const response = await this.xaiService.chat(query);
+                const formattedResponse = this.formatResponse(query, response);
+                await this.editMessage(chatId, thinkingMsg, formattedResponse);
             }
 
         } catch (error) {

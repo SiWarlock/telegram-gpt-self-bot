@@ -142,6 +142,9 @@ export class TelegramBotService extends BaseBotService {
 
     private async handleFeatureCommand(command: string, message: IBotMessage) {
         try {
+            // Log command execution for auditing
+            console.log(`[Command] Authorized execution: User ${message.senderId} -> ${command}`);
+
             switch (command) {
                 case 'gpt':
                     await this.gptFeature.handle(message);
