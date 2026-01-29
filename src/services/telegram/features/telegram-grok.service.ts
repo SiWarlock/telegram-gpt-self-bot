@@ -14,21 +14,16 @@ export class TelegramGrokFeature {
         const messageText = message.content || message.text || message.message || '';
         const chatId = message.chatId || message.chat?.id?.toString() || message.peerId?.toString();
 
-        console.log('TelegramGrokFeature handling message:', { 
-            hasContent: !!message.content, 
-            hasText: !!message.text, 
-            textLength: messageText.length,
-            chatId 
-        });
+
 
         if (!chatId) {
-            console.log('TelegramGrokFeature: No chat ID found');
+
             return;
         }
 
         const messageId = `${chatId}_${message.message_id || message.id || Date.now()}`;
         if (this.processingMessages.has(messageId)) {
-            console.log('TelegramGrokFeature: Duplicate message', messageId);
+
             return;
         }
         this.processingMessages.add(messageId);
@@ -36,7 +31,7 @@ export class TelegramGrokFeature {
         // Strip prefix (defaults to !grok)
         const prefix = config.bot.grokPrefix || '!grok';
         if (!messageText.startsWith(prefix)) {
-            console.log(`TelegramGrokFeature: Message "${messageText}" does not start with prefix "${prefix}"`);
+
             this.processingMessages.delete(messageId);
             return;
         }
@@ -57,10 +52,20 @@ Examples:
             }
 
             // Send thinking message
-            const thinkingMsg = await this.sendMessage(chatId, '👁️ Grok is scanning X (Twitter)...');
+            const thinkingMsg = await this.sendMessage(chatId, '👁️ Grok is thinking...');
 
-            // Analyze
-            const response = await this.xaiService.analyzeCrypto(query);
+            // Analyze vs Chat logic
+            const cryptoKeywords = ['sentiment', 'ca:', '$', 'token', 'scan', 'analyze', 'audit', 'check', 'price', 'volume'];
+            const isCryptoQuery = cryptoKeywords.some(k => query.toLowerCase().includes(k));
+
+            let response: string;
+            if (isCryptoQuery) {
+                await this.editMessage(chatId, thinkingMsg, '👁️ Grok is scanning X (Twitter)...');
+                response = await this.xaiService.analyzeCrypto(query);
+            } else {
+                response = await this.xaiService.chat(query);
+            }
+
             const formattedResponse = this.formatResponse(query, response);
 
             // Edit message with response
@@ -104,6 +109,29 @@ ${response}
             return await this.client.telegram.sendMessage(chatId, text, { parse_mode: 'Markdown' });
         } else {
             return await this.client.sendMessage(chatId, { message: text });
+        }
+    }
+
+    private async editMessage(chatId: string, message: any, text: string): Promise<void> {
+        try {
+            if (this.client.telegram) {
+                // Telegraf
+                await this.client.telegram.editMessageText(
+                    chatId,
+                    message.message_id,
+                    undefined,
+                    text,
+                    { parse_mode: 'Markdown' }
+                );
+            } else {
+                // GramJS / SelfClient
+                await this.client.editMessage(chatId, {
+                    message: message.id,
+                    text: text,
+                });
+            }
+        } catch (error) {
+            console.error('Error editing message:', error);
         }
     }
 }

@@ -95,8 +95,6 @@ export class TelegramBotService extends BaseBotService {
     }
 
     private async handleBotMessage(message: IBotMessage) {
-        console.log('Bot mode - Processing message:', message);
-
         // Check if it's a command
         if (message.content.startsWith('!') || message.content.startsWith('/')) {
             const command = message.content.slice(1).split(' ')[0].toLowerCase();
@@ -121,11 +119,9 @@ export class TelegramBotService extends BaseBotService {
     }
 
     private async handleSelfBotMessage(message: IBotMessage) {
-        console.log('Self-bot mode - Processing message:', message);
-
         // Only process messages from the owner in self-bot mode
         if (!this.isOwner(message.senderId)) {
-            console.log('Ignoring message from non-owner in self-bot mode');
+            // console.log('Ignoring message from non-owner in self-bot mode');
             return;
         }
 

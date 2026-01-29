@@ -55,9 +55,13 @@ Display the "Sentiment Score" (0-100) and "Volume Trend" if discernible.`
             });
 
             return completion.choices[0]?.message?.content || 'No response from Grok.';
-        } catch (error) {
-            console.error('Error calling Grok API:', error);
-            return '❌ Failed to get analysis from Grok.';
+        } catch (error: any) {
+            console.error('Error calling Grok API:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.status
+            });
+            return `❌ Failed to get analysis from Grok. (${error.message || 'Unknown error'})`;
         }
     }
 
