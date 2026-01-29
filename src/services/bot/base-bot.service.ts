@@ -31,11 +31,12 @@ export abstract class BaseBotService {
     }
 
     protected async checkPermission(userId: string, permission: string): Promise<boolean> {
-        // Owner always has all permissions
         if (this.isOwner(userId)) {
             return true;
         }
-        return await this.permissionsService.hasPermission(userId, permission);
+        const hasPerm = await this.permissionsService.hasPermission(userId, permission);
+        console.log(`[Permission Check] User: ${userId}, Permission: ${permission}, Result: ${hasPerm}`);
+        return hasPerm;
     }
 
     protected async handleRBACCommand(command: string, message: IBotMessage): Promise<IBotResponse> {

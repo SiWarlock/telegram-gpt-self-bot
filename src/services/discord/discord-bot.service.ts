@@ -4,9 +4,11 @@ import { config } from '../../config/config';
 import { BaseBotService, IBotMessage, IBotResponse } from '../bot/base-bot.service';
 import { OpenAIService } from '../openai.service';
 import { DiscordGPTFeature } from './features/discord-gpt.service';
+import { DiscordGrokFeature } from './features/discord-grok.service';
 import { DiscordTLDRFeature } from './features/discord-tldr.service';
 import { DiscordSelfDestructFeature } from './features/discord-self-destruct.service';
 import { DiscordGameFeature } from './features/discord-game.service';
+import { XAIService } from '../xai.service';
 
 type AnyClient = BotClient | SelfClient;
 type AnyMessage = BotMessage | SelfMessage;
@@ -17,6 +19,7 @@ export class DiscordBotService extends BaseBotService {
     private selfClient: SelfClient | null = null;
     private mode: 'bot' | 'self';
     private gptFeature: DiscordGPTFeature;
+    private grokFeature: DiscordGrokFeature;
     private tldrFeature: DiscordTLDRFeature;
     private selfDestructFeature: DiscordSelfDestructFeature;
     private gameFeature: DiscordGameFeature;
@@ -24,7 +27,7 @@ export class DiscordBotService extends BaseBotService {
     private botReadyTime?: Date;
     private selfReadyTime?: Date;
 
-    constructor(config: any, openAIService: OpenAIService) {
+    constructor(config: any, openAIService: OpenAIService, xaiService: XAIService) {
         super(config.discord.ownerId);
         this.mode = config.discord.mode;
         console.log('Initializing DiscordBotService with mode:', this.mode, 'ownerId:', this.ownerId);
@@ -61,6 +64,7 @@ export class DiscordBotService extends BaseBotService {
 
         // Cast to any to avoid type conflicts between discord.js and selfbot-v13
         this.gptFeature = new DiscordGPTFeature(client as any, openAIService, this.conversations);
+        this.grokFeature = new DiscordGrokFeature(client as any, xaiService);
         this.tldrFeature = new DiscordTLDRFeature(client as any, openAIService);
         this.selfDestructFeature = new DiscordSelfDestructFeature(client as any);
         this.gameFeature = new DiscordGameFeature(client as any);
@@ -150,6 +154,9 @@ export class DiscordBotService extends BaseBotService {
             switch (command) {
                 case 'gpt':
                     await this.gptFeature.handle(originalMessage as any);
+                    break;
+                case 'grok':
+                    await this.grokFeature.handle(originalMessage as any);
                     break;
                 case 'tldr':
                     await this.tldrFeature.handle(originalMessage as any);

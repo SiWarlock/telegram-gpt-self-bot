@@ -3,6 +3,7 @@ import { TelegramService } from './services/telegram/telegram.service';
 import { DiscordBotService } from './services/discord/discord-bot.service';
 import { TelegramBotService } from './services/telegram/telegram-bot.service';
 import { OpenAIService } from './services/openai.service';
+import { XAIService } from './services/xai.service';
 import { config } from './config/config';
 
 const app = express();
@@ -12,8 +13,9 @@ async function startServices() {
     let servicesStarted = 0;
     const services: Array<{ name: string; promise: Promise<void> }> = [];
 
-    // Initialize OpenAI Service
+    // Initialize AI Services
     const openAIService = new OpenAIService();
+    const xaiService = new XAIService();
 
     // Check Telegram credentials
     if (config.telegram.apiId && config.telegram.apiHash && config.telegram.sessionString) {
@@ -31,7 +33,7 @@ async function startServices() {
     // Check Telegram Bot Token
     if (config.telegram.botToken) {
         console.log('Starting Telegram bot service...');
-        const telegramBotService = new TelegramBotService(config, openAIService);
+        const telegramBotService = new TelegramBotService(config, openAIService, xaiService);
         services.push({
             name: 'Telegram Bot',
             promise: telegramBotService.start()
@@ -44,7 +46,7 @@ async function startServices() {
     // Check Discord token or bot token - TEMPORARILY DISABLED
     // if (config.discord.token || config.discord.botToken) {
     //     console.log('Starting Discord bot service...');
-    //     const discordService = new DiscordBotService(config, openAIService);
+    //     const discordService = new DiscordBotService(config, openAIService, xaiService);
     //     services.push({
     //         name: 'Discord Bot',
     //         promise: discordService.start()

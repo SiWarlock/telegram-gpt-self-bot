@@ -26,8 +26,13 @@ export const config = {
     openai: {
         apiKey: process.env.OPENAI_API_KEY
     },
+    xai: {
+        apiKey: process.env.XAI_API_KEY,
+        model: 'grok-2-latest' // ensuring access to latest agentic & search features
+    },
     bot: {
         triggerPrefix: '!gpt',
+        grokPrefix: '!grok',
         selfDestructPrefix: '!sd',
         tldrPrefix: '!tldr',
         gamePrefix: '!game',

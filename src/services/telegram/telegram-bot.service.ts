@@ -4,11 +4,13 @@ import { config } from '../../config/config';
 import { BaseBotService, IBotMessage, IBotResponse } from '../bot/base-bot.service';
 import { OpenAIService } from '../openai.service';
 import { GPTFeature } from './features/telegram-gpt.service';
+import { TelegramGrokFeature } from './features/telegram-grok.service';
 import { TLDRFeature } from './features/telegram-tldr.service';
 import { SelfDestructFeature } from './features/telegram-self-destruct.service';
 import { GameFeature } from './features/telegram-game.service';
 import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions';
+import { XAIService } from '../xai.service';
 
 type BotContext = Context<Update>;
 type TextMessage = Message.TextMessage;
@@ -18,12 +20,13 @@ export class TelegramBotService extends BaseBotService {
     private selfClient: any;
     private mode: 'bot' | 'self';
     private gptFeature: GPTFeature;
+    private grokFeature: TelegramGrokFeature;
     private tldrFeature: TLDRFeature;
     private selfDestructFeature: SelfDestructFeature;
     private gameFeature: GameFeature;
     private conversations: Map<string, any> = new Map();
 
-    constructor(config: any, openAIService: OpenAIService) {
+    constructor(config: any, openAIService: OpenAIService, xaiService: XAIService) {
         super(config.telegram.ownerId);
         this.mode = config.telegram.mode;
         console.log('Initializing TelegramBotService with mode:', this.mode, 'ownerId:', this.ownerId);
@@ -48,6 +51,7 @@ export class TelegramBotService extends BaseBotService {
         // Initialize features
         const client = this.mode === 'bot' ? this.bot : this.selfClient;
         this.gptFeature = new GPTFeature(client, openAIService, this.conversations);
+        this.grokFeature = new TelegramGrokFeature(client, xaiService);
         this.tldrFeature = new TLDRFeature(client, openAIService);
         this.selfDestructFeature = new SelfDestructFeature(client);
         this.gameFeature = new GameFeature(client);
@@ -141,6 +145,9 @@ export class TelegramBotService extends BaseBotService {
             switch (command) {
                 case 'gpt':
                     await this.gptFeature.handle(message);
+                    break;
+                case 'grok':
+                    await this.grokFeature.handle(message);
                     break;
                 case 'tldr':
                     await this.tldrFeature.handle(message);

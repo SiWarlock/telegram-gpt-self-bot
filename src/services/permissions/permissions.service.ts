@@ -97,15 +97,24 @@ export class PermissionsService {
                 }
             });
 
-            if (!user) return false;
+            if (!user) {
+                console.log(`[RBAC] User ${userId} not found in database`);
+                return false;
+            }
 
             // Check direct permissions
             if (user.permissions.some((p: { name: string }) => p.name === permissionName)) return true;
 
             // Check role-based permissions
-            return user.roles.some((role: { permissions: Array<{ name: string }> }) => 
+            const hasRolePerm = user.roles.some((role: { permissions: Array<{ name: string }> }) => 
                 role.permissions.some((p: { name: string }) => p.name === permissionName)
             );
+            
+            if (!hasRolePerm) {
+                console.log(`[RBAC] User ${userId} found but missing permission ${permissionName}. Roles: ${user.roles.map((r: any) => r.name).join(', ')}`);
+            }
+            return hasRolePerm;
+
         } catch (error) {
             console.error('Error checking permission:', error);
             return false;
