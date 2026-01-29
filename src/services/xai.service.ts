@@ -1,26 +1,22 @@
-import OpenAI from 'openai';
+import { xai } from '@ai-sdk/xai';
+import { generateText } from 'ai';
 import { config } from '../config/config';
 
 export class XAIService {
-    private client: OpenAI;
     private readonly model: string;
 
     constructor() {
         if (!config.xai.apiKey) {
             console.warn('XAI_API_KEY is not set. Grok features will be disabled.');
         }
-
-        this.client = new OpenAI({
-            apiKey: config.xai.apiKey || 'dummy_key',
-            baseURL: 'https://api.x.ai/v1'
-        });
         
         this.model = config.xai.model;
     }
 
     /**
-     * Analyze a generic crypto query or contract address (CA) using Grok's real-time capabilities.
-     * @param query The user's prompt (e.g., "$TOKEN sentiment", "CA: 0x...", "What is people saying about X?")
+     * Analyze a crypto query using Grok's REAL-TIME X search via Agent Tools API.
+     * Uses @ai-sdk/xai with x_search tool for actual X (Twitter) searches.
+     * @param query The user's prompt (e.g., "$TOKEN sentiment", "CA: 0x...", etc.)
      */
     async analyzeCrypto(query: string): Promise<string> {
         if (!config.xai.apiKey) {
@@ -28,47 +24,54 @@ export class XAIService {
         }
 
         try {
-            const completion = await this.client.chat.completions.create({
-                model: this.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: `You are Grok, an expert crypto analyst with **agentic access to Real-Time X (Twitter) Search**.
-                        
-Your GOAL is to provide the most up-to-date sentiment analysis possible by actively searching X for the latest data.
+            const { text, sources } = await generateText({
+                model: xai.responses(this.model, {
+                    apiKey: config.xai.apiKey
+                }),
+                prompt: `You are an expert crypto analyst with real-time access to X (Twitter) search.
 
-When the user provides a Token Symbol (e.g., $DOGE) or a Contract Address (CA), you MUST:
-1. **PERFORM A LIVE SEARCH** on X for recent posts (last 1-4 hours) about this token.
-2. Analyze the *current* sentiment (Bullish, Bearish, Neutral) based on these *live* search results.
-3. Identify breaking news, FUD, or trending narratives *right now*.
-4. Ignore outdated information and spam. Focus ONLY on the present moment.
+TASK: Analyze the following crypto query using LIVE X search data.
 
-Keep your response concise, edgy, and engaging. Use emojis.
-Display the "Sentiment Score" (0-100) and "Volume Trend" if discernible.`
-                    },
-                    {
-                        role: 'user',
-                        content: query
-                    }
-                ],
-                temperature: 0.7, // Slightly creative but grounded in search results
+When you receive a Token Symbol (e.g., $DOGE, $PENGUIN) or a Contract Address (CA), you MUST:
+1. Search X for recent posts (last 1-4 hours) about this EXACT token/CA.
+2. Analyze the current sentiment (Bullish/Bearish/Neutral) based on LIVE search results.
+3. Identify breaking news, FUD, or trending narratives happening RIGHT NOW.
+4. Ignore outdated information and spam.
+
+Format your response to include:
+- Token name/symbol (if identifiable from CA)
+- Sentiment score (0-100)
+- Volume trend
+- Key findings from X posts
+
+Query: ${query}`,
+                tools: {
+                    x_search: xai.tools.xSearch({
+                        // Search last 4 hours for maximum freshness
+                        // No handle restrictions - we want all public sentiment
+                    }),
+                },
+                temperature: 0.7,
             });
 
-            console.log('[XAIService] Raw completion response:', JSON.stringify(completion, null, 2));
+            console.log('[XAIService] Agent Tools response:', {
+                textLength: text.length,
+                sourcesUsed: sources?.length || 0,
+                sources: sources
+            });
 
-            return completion.choices[0]?.message?.content || 'No response from Grok.';
+            return text || 'No response from Grok.';
         } catch (error: any) {
-            console.error('Error calling Grok API:', {
+            console.error('Error calling Grok Agent Tools API:', {
                 message: error.message,
-                response: error.response?.data,
-                status: error.status
+                stack: error.stack
             });
             return `❌ Failed to get analysis from Grok. (${error.message || 'Unknown error'})`;
         }
     }
 
     /**
-     * General chat with Grok
+     * General chat with Grok (no X search)
      */
     async chat(prompt: string): Promise<string> {
         if (!config.xai.apiKey) {
@@ -76,21 +79,15 @@ Display the "Sentiment Score" (0-100) and "Volume Trend" if discernible.`
         }
 
         try {
-            const completion = await this.client.chat.completions.create({
-                model: this.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: 'You are Grok, a rebellious and witty AI assistant with real-time knowledge from X.'
-                    },
-                    {
-                        role: 'user',
-                        content: prompt
-                    }
-                ]
+            const { text } = await generateText({
+                model: xai.responses(this.model, {
+                    apiKey: config.xai.apiKey
+                }),
+                prompt: `You are Grok, a rebellious and witty AI assistant. ${prompt}`,
+                temperature: 0.9,
             });
 
-            return completion.choices[0]?.message?.content || 'No response.';
+            return text || 'No response.';
         } catch (error) {
             console.error('Error calling Grok API:', error);
             return '❌ Request failed.';
