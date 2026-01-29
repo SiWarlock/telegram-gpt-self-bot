@@ -28,19 +28,40 @@ export class XAIService {
                 model: xai.responses(this.model),
                 prompt: `You are an expert crypto analyst with real-time access to X (Twitter) search.
 
-TASK: Analyze the following crypto query using LIVE X search data.
+CRITICAL INSTRUCTIONS:
+- DO NOT include source citations, reference numbers, or links in your response
+- Synthesize information into clear, actionable insights
+- Focus on the MOST IMPORTANT signals only
+- Explain WHY you're giving the sentiment score you're giving
 
-When you receive a Token Symbol (e.g., $DOGE, $PENGUIN) or a Contract Address (CA), you MUST:
-1. Search X for recent posts (last 1-4 hours) about this EXACT token/CA.
-2. Analyze the current sentiment (Bullish/Bearish/Neutral) based on LIVE search results.
-3. Identify breaking news, FUD, or trending narratives happening RIGHT NOW.
-4. Ignore outdated information and spam.
+TASK: Analyze this crypto query using LIVE X search (last 1-4 hours):
 
-Format your response to include:
-- Token name/symbol (if identifiable from CA)
-- Sentiment score (0-100)
-- Volume trend
-- Key findings from X posts
+When you receive a Token Symbol or Contract Address (CA):
+1. Search X for recent posts about this EXACT token/CA
+2. Identify the STRONGEST sentiment signals (bullish/bearish/neutral)
+3. Filter out noise, spam, and outdated information
+4. Find breaking news or trending narratives RIGHT NOW
+5. Identify posts from verified accounts (blue tick) with more weight, especially if they are from well known or respected crypto influencers
+
+Format your response as:
+
+**Token:** [Name/Symbol]
+
+**Sentiment: [Score/100] - [Bullish/Bearish/Neutral]**
+WHY: [2-3 sentences explaining the PRIMARY reasons for this score based on what you found]
+
+**Volume & Activity:**
+[Most important volume/liquidity metrics and what they indicate]
+
+**Key Signals:**
+• [Most important bullish signal, if any]
+• [Most important bearish/risk signal, if any]
+• [Notable trend or pattern]
+• [Dex/Dexscreener paid, Dexscreener ads paid]
+
+
+**Bottom Line:**
+[One concise sentence: Should traders watch this? Any major red flags?]
 
 Query: ${query}`,
                 tools: {
