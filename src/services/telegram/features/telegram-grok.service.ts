@@ -11,13 +11,24 @@ export class TelegramGrokFeature {
     ) {}
 
     async handle(message: any): Promise<void> {
-        const messageText = message.text || message.message || '';
-        const chatId = message.chat?.id?.toString() || message.chatId?.toString() || message.peerId?.toString();
+        const messageText = message.content || message.text || message.message || '';
+        const chatId = message.chatId || message.chat?.id?.toString() || message.peerId?.toString();
 
-        if (!chatId) return;
+        console.log('TelegramGrokFeature handling message:', { 
+            hasContent: !!message.content, 
+            hasText: !!message.text, 
+            textLength: messageText.length,
+            chatId 
+        });
+
+        if (!chatId) {
+            console.log('TelegramGrokFeature: No chat ID found');
+            return;
+        }
 
         const messageId = `${chatId}_${message.message_id || message.id || Date.now()}`;
         if (this.processingMessages.has(messageId)) {
+            console.log('TelegramGrokFeature: Duplicate message', messageId);
             return;
         }
         this.processingMessages.add(messageId);
@@ -25,6 +36,7 @@ export class TelegramGrokFeature {
         // Strip prefix (defaults to !grok)
         const prefix = config.bot.grokPrefix || '!grok';
         if (!messageText.startsWith(prefix)) {
+            console.log(`TelegramGrokFeature: Message "${messageText}" does not start with prefix "${prefix}"`);
             this.processingMessages.delete(messageId);
             return;
         }

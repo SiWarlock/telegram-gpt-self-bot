@@ -21,7 +21,8 @@ export const config = {
     discord: {
         token: process.env.DISCORD_TOKEN,
         botToken: process.env.DISCORD_BOT_TOKEN,
-        ownerId: process.env.DISCORD_OWNER_ID
+        ownerId: process.env.DISCORD_OWNER_ID,
+        enabled: process.env.ENABLE_DISCORD === 'true'
     },
     openai: {
         apiKey: process.env.OPENAI_API_KEY
