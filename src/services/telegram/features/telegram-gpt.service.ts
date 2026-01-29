@@ -23,9 +23,11 @@ export class GPTFeature {
     }
 
     async handle(message: any): Promise<void> {
-        const messageText = message.text;
-        // Handle both Telegraf message structure and direct message structure
-        const chatId = message.chat?.id?.toString() || message.chatId?.toString() || message.peerId?.toString();
+        // Handle standard IBotMessage structure (content) or legacy/Telegraf (text)
+        const messageText = message.content || message.text || message.message || '';
+        
+        // Handle IBotMessage (chatId) or Telegraf/GramJS structure
+        const chatId = message.chatId || message.chat?.id?.toString() || message.peerId?.toString();
 
         if (!chatId) return;
 
@@ -44,9 +46,18 @@ export class GPTFeature {
 
         try {
             // Handle both Telegraf bot and Telegram client
-            const thinkingMessage = this.client.telegram 
-                ? await this.client.telegram.sendMessage(chatId, '🤔 Thinking...')
-                : await this.client.sendMessage(chatId, { message: '🤔 Thinking...' });
+            // For GramJS (self-bot), try to use the original message wrapper to reply
+            // This fixes 'Could not find input entity' errors
+            let thinkingMessage;
+            if (this.client.telegram) {
+                 thinkingMessage = await this.client.telegram.sendMessage(chatId, '🤔 Thinking...');
+            } else {
+                if (message.originalMessage && typeof message.originalMessage.reply === 'function') {
+                    thinkingMessage = await message.originalMessage.reply({ message: '🤔 Thinking...' });
+                } else {
+                    thinkingMessage = await this.client.sendMessage(chatId, { message: '🤔 Thinking...' });
+                }
+            }
 
             if (!thinkingMessage) {
                 throw new Error('Failed to send thinking message');
@@ -82,19 +93,29 @@ export class GPTFeature {
                     { parse_mode: config.bot.enableMarkdown ? 'Markdown' : undefined }
                 );
             } else {
-                await this.client.editMessage(chatId, {
-                    message: thinkingMessage.id,
-                    text: formattedResponse,
-                });
+                // GramJS - Check if thinkingMessage is an object with edit method
+                if (thinkingMessage && typeof thinkingMessage.edit === 'function') {
+                    await thinkingMessage.edit({ text: formattedResponse });
+                } else {
+                    await this.client.editMessage(chatId, {
+                        message: thinkingMessage.id,
+                        text: formattedResponse,
+                    });
+                }
             }
 
         } catch (error) {
-            console.error('Error handling message:', error);
+            console.error('Error handling GPT feature message:', error);
             // Handle both Telegraf bot and Telegram client for error messages
             if (this.client.telegram) {
                 await this.client.telegram.sendMessage(chatId, '❌ Sorry, there was an error processing your request.');
             } else {
-                await this.client.sendMessage(chatId, { message: '❌ Sorry, there was an error processing your request.' });
+                // Try replying to original message if available for error too
+                 if (message.originalMessage && typeof message.originalMessage.reply === 'function') {
+                    await message.originalMessage.reply({ message: '❌ Sorry, error processing request.' });
+                 } else {
+                    await this.client.sendMessage(chatId, { message: '❌ Sorry, there was an error processing your request.' });
+                 }
             }
         } finally {
             this.processingMessages.delete(messageId);
@@ -102,8 +123,8 @@ export class GPTFeature {
     }
 
     private async handleCommands(message: any, command: string): Promise<boolean> {
-        // Handle both Telegraf message structure and direct message structure
-        const chatId = message.chat?.id?.toString() || message.chatId?.toString() || message.peerId?.toString();
+        // Handle IBotMessage (chatId) or Telegraf/GramJS structure
+        const chatId = message.chatId || message.chat?.id?.toString() || message.peerId?.toString();
         
         if (!chatId) return false;
         

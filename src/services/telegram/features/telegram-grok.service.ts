@@ -47,12 +47,12 @@ Examples:
 • ${prefix} CA: 0x123...456
 • ${prefix} What is the vibe on X for Bitcoin?`;
                 
-                await this.sendMessage(chatId, helpMsg);
+                await this.sendMessage(chatId, helpMsg, message.originalMessage);
                 return;
             }
 
             // Send thinking message
-            const thinkingMsg = await this.sendMessage(chatId, '👁️ Grok is thinking...');
+            const thinkingMsg = await this.sendMessage(chatId, '👁️ Grok is thinking...', message.originalMessage);
 
             // Analyze vs Chat logic
             const cryptoKeywords = ['sentiment', 'ca:', '$', 'token', 'scan', 'analyze', 'audit', 'check', 'price', 'volume'];
@@ -104,10 +104,15 @@ ${response}
 *Powered by xAI*`;
     }
 
-    private async sendMessage(chatId: string, text: string): Promise<any> {
+    private async sendMessage(chatId: string, text: string, originalMessage?: any): Promise<any> {
         if (this.client.telegram) {
             return await this.client.telegram.sendMessage(chatId, text, { parse_mode: 'Markdown' });
         } else {
+            // For GramJS, use the original message to reply if possible, which handles entities automatically
+            if (originalMessage && typeof originalMessage.reply === 'function') {
+                return await originalMessage.reply({ message: text });
+            }
+            // Fallback (might fail if entity not found)
             return await this.client.sendMessage(chatId, { message: text });
         }
     }
@@ -124,11 +129,16 @@ ${response}
                     { parse_mode: 'Markdown' }
                 );
             } else {
-                // GramJS / SelfClient
-                await this.client.editMessage(chatId, {
-                    message: message.id,
-                    text: text,
-                });
+                // GramJS
+                // If message is a GramJS message object, it has an edit method
+                if (message && typeof message.edit === 'function') {
+                    await message.edit({ text: text });
+                } else {
+                    await this.client.editMessage(chatId, {
+                        message: message.id,
+                        text: text,
+                    });
+                }
             }
         } catch (error) {
             console.error('Error editing message:', error);

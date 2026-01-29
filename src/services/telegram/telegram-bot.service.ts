@@ -87,7 +87,8 @@ export class TelegramBotService extends BaseBotService {
                 chatId: message.chatId?.toString() || message.peerId?.toString() || '',
                 content: message.text || message.message || '',
                 username: message.sender?.username || '',
-                message_id: message.id
+                message_id: message.id,
+                originalMessage: message // Pass the raw message object
             };
 
             await this.handleSelfBotMessage(botMessage);

@@ -7,6 +7,7 @@ export interface IBotMessage {
     chatId: string;
     username?: string;
     message_id?: number | string;
+    originalMessage?: any; // Stores the raw platform-specific message object for replying
 }
 
 export interface IBotResponse {
