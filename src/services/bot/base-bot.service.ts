@@ -6,6 +6,7 @@ export interface IBotMessage {
     senderId: string;
     chatId: string;
     username?: string;
+    message_id?: number | string;
 }
 
 export interface IBotResponse {

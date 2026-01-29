@@ -1,5 +1,6 @@
 import { Telegraf, Context } from 'telegraf';
 import { Update, Message } from 'telegraf/types';
+import { NewMessage } from 'telegram/events';
 import { config } from '../../config/config';
 import { BaseBotService, IBotMessage, IBotResponse } from '../bot/base-bot.service';
 import { OpenAIService } from '../openai.service';
@@ -78,17 +79,19 @@ export class TelegramBotService extends BaseBotService {
 
     private setupSelfBotHandlers() {
         this.selfClient.addEventHandler(async (event: any) => {
-            if (event._eventName !== 'message') return;
+            const message = event.message;
+            if (!message || !message.text) return;
 
-            const message = {
-                senderId: event.message.senderId?.toString() || '',
-                chatId: event.message.chatId.toString(),
-                content: event.message.message || '',
-                username: event.message.sender?.username || '',
+            const botMessage: IBotMessage = {
+                senderId: message.senderId?.toString() || '',
+                chatId: message.chatId?.toString() || message.peerId?.toString() || '',
+                content: message.text || message.message || '',
+                username: message.sender?.username || '',
+                message_id: message.id
             };
 
-            await this.handleSelfBotMessage(message);
-        });
+            await this.handleSelfBotMessage(botMessage);
+        }, new NewMessage({ incoming: true, outgoing: true }));
     }
 
     private async handleBotMessage(message: IBotMessage) {

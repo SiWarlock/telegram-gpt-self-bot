@@ -18,17 +18,17 @@ async function startServices() {
     const xaiService = new XAIService();
 
     // Check Telegram credentials
-    if (config.telegram.apiId && config.telegram.apiHash && config.telegram.sessionString) {
-        console.log('Starting Telegram service...');
-        const telegramService = new TelegramService();
-        services.push({
-            name: 'Telegram',
-            promise: telegramService.start()
-        });
-        servicesStarted++;
-    } else {
-        console.log('Skipping Telegram service - missing credentials');
-    }
+    // if (config.telegram.apiId && config.telegram.apiHash && config.telegram.sessionString) {
+    //     console.log('Starting Telegram service...');
+    //     const telegramService = new TelegramService();
+    //     services.push({
+    //         name: 'Telegram',
+    //         promise: telegramService.start()
+    //     });
+    //     servicesStarted++;
+    // } else {
+    //     console.log('Skipping Telegram service - missing credentials');
+    // }
 
     // Check Telegram Bot Token
     if (config.telegram.botToken) {
