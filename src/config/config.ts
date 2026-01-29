@@ -29,7 +29,7 @@ export const config = {
     },
     xai: {
         apiKey: process.env.XAI_API_KEY,
-        model: 'grok-2-latest' // ensuring access to latest agentic & search features
+        model: 'grok-4-1-fast-reasoning'
     },
     bot: {
         triggerPrefix: '!gpt',

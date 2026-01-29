@@ -27,7 +27,7 @@ export abstract class BaseBotService {
     }
 
     protected isOwner(userId: string): boolean {
-        console.log('Checking if owner:', { userId, ownerId: this.ownerId, isMatch: userId === this.ownerId });
+        // console.log('Checking if owner:', { userId, ownerId: this.ownerId, isMatch: userId === this.ownerId });
         return userId === this.ownerId;
     }
 
@@ -36,7 +36,7 @@ export abstract class BaseBotService {
             return true;
         }
         const hasPerm = await this.permissionsService.hasPermission(userId, permission);
-        console.log(`[Permission Check] User: ${userId}, Permission: ${permission}, Result: ${hasPerm}`);
+        // console.log(`[Permission Check] User: ${userId}, Permission: ${permission}, Result: ${hasPerm}`);
         return hasPerm;
     }
 

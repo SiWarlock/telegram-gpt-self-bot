@@ -52,6 +52,30 @@ Display the "Sentiment Score" (0-100) and "Volume Trend" if discernible.`
                     }
                 ],
                 temperature: 0.7, // Slightly creative but grounded in search results
+                tools: [
+                    {
+                        type: 'function',
+                        function: {
+                            name: 'x_search',
+                            description: 'Search X (Twitter) for real-time posts, sentiment, and news.',
+                            parameters: {
+                                type: 'object',
+                                properties: {
+                                    query: {
+                                        type: 'string',
+                                        description: 'The search query string'
+                                    },
+                                    date_range: {
+                                        type: 'string',
+                                        description: 'Optional date range filter'
+                                    }
+                                },
+                                required: ['query']
+                            }
+                        }
+                    }
+                ],
+                tool_choice: 'auto'
             });
 
             return completion.choices[0]?.message?.content || 'No response from Grok.';
